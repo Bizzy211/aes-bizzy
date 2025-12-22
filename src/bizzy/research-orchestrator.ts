@@ -255,7 +255,7 @@ function extractCodeExamples(content: string, language?: string): CodeExample[] 
       // Get description from surrounding context
       const beforeBlock = content.substring(Math.max(0, match.index - 200), match.index);
       const descMatch = beforeBlock.match(/[.!?]\s*([^.!?]+)$/);
-      const description = descMatch ? descMatch[1].trim() : 'Code example';
+      const description = descMatch?.[1]?.trim() || 'Code example';
 
       examples.push({
         description,
@@ -431,7 +431,7 @@ export async function searchTechDocs(
   query: string,
   options: ResearchOptions = {}
 ): Promise<TechnicalDocsResult> {
-  const { numResults = 5, fallbackOnError = true } = options;
+  const { fallbackOnError = true } = options;
 
   const result: TechnicalDocsResult = {
     officialDocs: [],
@@ -609,7 +609,6 @@ export async function gatherProjectResearch(
   projectQuery: string,
   options: GatherResearchOptions = {}
 ): Promise<ProjectResearchResult> {
-  const startTime = Date.now();
   const sources: string[] = [];
   const errors: string[] = [];
   let totalTokens = 0;

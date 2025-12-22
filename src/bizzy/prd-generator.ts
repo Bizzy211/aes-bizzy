@@ -436,7 +436,7 @@ export function extractProjectName(userPrompt: string): string {
  */
 export function extractRequirements(
   userPrompt: string,
-  projectType: ProjectType
+  _projectType: ProjectType
 ): DetectedRequirement[] {
   const requirements: DetectedRequirement[] = [];
 
@@ -544,7 +544,7 @@ export function extractTechStack(prompt: string, researchData?: ResearchData): s
     for (const ref of researchData.technicalDocs.apiReferences) {
       // Extract library name from reference
       const nameMatch = ref.name.match(/^([a-zA-Z0-9-_]+)/);
-      if (nameMatch) {
+      if (nameMatch && nameMatch[1]) {
         stack.add(nameMatch[1].toLowerCase());
       }
     }
@@ -606,7 +606,7 @@ export async function loadTemplate(projectType: ProjectType, templatePath?: stri
 /**
  * Get default inline template
  */
-function getDefaultTemplate(projectType: ProjectType): string {
+function getDefaultTemplate(_projectType: ProjectType): string {
   return `# {{PROJECT_NAME}} - Product Requirements Document
 
 ## Overview
