@@ -84,6 +84,23 @@ export {
   generatePRSummary,
 } from './pr-linking.js';
 
+// Repository management
+export {
+  createRepository,
+  initializeRepo,
+  createDefaultLabels,
+  createMilestones,
+  pushProjectFiles,
+  setupRepository,
+  deleteRepository,
+  repositoryExists,
+  getRepository,
+  DEFAULT_AGENT_LABELS,
+  WORKFLOW_LABELS,
+  DEFAULT_MILESTONE_PHASES,
+  GitHubAPIError,
+} from './repository-manager.js';
+
 // Re-export types
 export type {
   AgentCapability,
@@ -105,4 +122,16 @@ export type {
   BatchTriageReport,
   AutomationLogEntry,
   AgentCapabilityCache,
+  RepoConfig,
+  RepoResult,
+  InitOptions,
+  InitResult,
+  LabelCreateResult,
+  MilestonePhase,
+  MilestoneResult,
+  FileUpload,
+  UploadResult,
+  CompleteRepoConfig,
+  SetupResult,
+  AgentLabel,
 } from '../../types/github-automation.js';
