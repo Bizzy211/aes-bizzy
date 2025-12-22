@@ -13,6 +13,27 @@ import { createDefaultConfig } from '../config/ecosystem-config.js';
 import { COMPONENT_TYPES, COMPONENT_DIRS, DEFAULT_REPO_URL, DEFAULT_REPO_OWNER, DEFAULT_REPO_NAME, DEFAULT_BRANCH, } from '../types/repo-sync.js';
 import { loadManifest, loadManifestByTier, filterByCategories, manifestFilesToComponentFiles, resolveDependencies, getManifestSummary, } from './manifest.js';
 /**
+ * Get the relative path within a component type directory.
+ * Preserves subdirectory structure for proper installation.
+ *
+ * Examples:
+ *   - relativePath: 'skills/orchestration/bizzy.md' -> 'orchestration/bizzy.md'
+ *   - relativePath: 'agents/pm-lead.md' -> 'pm-lead.md'
+ *   - relativePath: 'hooks/pre-commit/lint.md' -> 'pre-commit/lint.md'
+ */
+function getRelativeComponentPath(component) {
+    const componentTypeDir = COMPONENT_DIRS[component.type];
+    // Normalize path separators for cross-platform compatibility
+    const normalizedRelative = component.relativePath.replace(/\\/g, '/');
+    const normalizedTypeDir = componentTypeDir.replace(/\\/g, '/');
+    // If relativePath starts with the component type directory, strip it
+    if (normalizedRelative.startsWith(normalizedTypeDir + '/')) {
+        return normalizedRelative.slice(normalizedTypeDir.length + 1);
+    }
+    // Fallback to just the filename
+    return path.basename(component.path);
+}
+/**
  * Get the Claude config directory
  */
 function getClaudeDir() {
@@ -170,7 +191,9 @@ async function checkConflicts(components, targetDir) {
     const conflicts = [];
     for (const component of components) {
         const destDir = COMPONENT_DIRS[component.type];
-        const targetPath = path.join(targetDir, destDir, component.name);
+        // Use relative component path to preserve subdirectory structure
+        const relPath = getRelativeComponentPath(component);
+        const targetPath = path.join(targetDir, destDir, relPath);
         if (existsSync(targetPath)) {
             const stats = statSync(targetPath);
             conflicts.push({
@@ -187,9 +210,11 @@ async function checkConflicts(components, targetDir) {
  */
 async function copyComponent(component, targetDir, strategy = 'backup') {
     const destDir = path.join(targetDir, COMPONENT_DIRS[component.type]);
-    const targetPath = path.join(destDir, path.basename(component.path));
-    // Create destination directory
-    await fs.mkdir(destDir, { recursive: true });
+    // Use relative component path to preserve subdirectory structure
+    const relPath = getRelativeComponentPath(component);
+    const targetPath = path.join(destDir, relPath);
+    // Create destination directory (including any subdirectories)
+    await fs.mkdir(path.dirname(targetPath), { recursive: true });
     const exists = existsSync(targetPath);
     let action = 'created';
     if (exists) {
@@ -381,9 +406,10 @@ export async function syncPrivateRepo(options) {
         if (options.dryRun) {
             logger.info(`[Dry Run] Would sync ${selectedComponents.length} components`);
             for (const component of selectedComponents) {
+                const relPath = getRelativeComponentPath(component);
                 result.synced.push({
                     file: component,
-                    targetPath: path.join(claudeDir, COMPONENT_DIRS[component.type], component.name),
+                    targetPath: path.join(claudeDir, COMPONENT_DIRS[component.type], relPath),
                     action: 'created',
                 });
             }

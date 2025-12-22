@@ -62,29 +62,45 @@ export function createProgram() {
     // === INIT COMMAND ===
     program
         .command('init')
-        .description('Initialize Claude Code development environment with 7-step wizard')
+        .description('Initialize Claude Code development environment with 8-step wizard')
         .option('--skip-prerequisites', 'Skip prerequisites check')
         .option('--skip-github', 'Skip GitHub authentication')
+        .option('--skip-api-keys', 'Skip API keys configuration')
         .option('--skip-sync', 'Skip private repository sync')
         .option('--skip-beads', 'Skip Beads installation')
         .option('--skip-taskmaster', 'Skip Task Master installation')
         .option('--skip-mcp', 'Skip MCP servers configuration')
         .option('-y, --yes', 'Accept all defaults without prompting')
+        .option('--force', 'Force operations even on errors')
+        .option('--no-backup', 'Skip automatic backup before sync')
         .option('--beads-method <method>', 'Beads installation method (npm, winget, brew, cargo, binary)')
         .option('--taskmaster-model <model>', 'TaskMaster AI model (e.g., claude-sonnet-4-20250514)')
         .option('--non-interactive', 'Run in non-interactive mode (auto-select defaults)')
+        .option('--github-token <token>', 'GitHub personal access token')
+        .option('--exa-key <key>', 'Exa.ai API key')
+        .option('--ref-key <key>', 'Ref.tools API key')
+        .option('--anthropic-key <key>', 'Anthropic API key')
+        .option('--perplexity-key <key>', 'Perplexity API key')
         .action(async (options) => {
         const result = await runInitWizard({
             skipPrerequisites: options.skipPrerequisites,
             skipGithub: options.skipGithub,
+            skipApiKeys: options.skipApiKeys,
             skipSync: options.skipSync,
             skipBeads: options.skipBeads,
             skipTaskmaster: options.skipTaskmaster,
             skipMcp: options.skipMcp,
             yes: options.yes,
+            force: options.force,
+            noBackup: options.noBackup,
             beadsMethod: options.beadsMethod,
             taskmasterModel: options.taskmasterModel,
             nonInteractive: options.nonInteractive,
+            githubToken: options.githubToken,
+            exaApiKey: options.exaKey,
+            refApiKey: options.refKey,
+            anthropicApiKey: options.anthropicKey,
+            perplexityApiKey: options.perplexityKey,
         });
         if (!result.success) {
             process.exit(1);
