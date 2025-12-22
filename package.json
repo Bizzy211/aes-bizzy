@@ -1,6 +1,6 @@
 {
   "name": "@bizzy211/aes-bizzy",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "A.E.S - Bizzy: Multi-Agent Orchestration Platform for Claude Code. Ship 10x faster with autonomous AI development teams coordinated by PM-Lead. Beads context management, GitHub Issues integration, TaskMaster intelligence.",
   "type": "module",
   "main": "dist/index.js",
