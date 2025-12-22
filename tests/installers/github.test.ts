@@ -1,6 +1,33 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
 import * as shell from '../../src/utils/shell.js';
 import * as platform from '../../src/utils/platform.js';
+
+// Mock node:fs
+vi.mock('node:fs', () => ({
+  existsSync: vi.fn(),
+  mkdirSync: vi.fn(),
+  writeFileSync: vi.fn(),
+  readFileSync: vi.fn(),
+  unlinkSync: vi.fn(),
+}));
+
+// Mock node:os
+vi.mock('node:os', () => ({
+  homedir: vi.fn(() => 'C:\\Users\\test'),
+}));
+
+// Mock logger
+vi.mock('../../src/utils/logger.js', () => ({
+  createLogger: vi.fn(() => ({
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    success: vi.fn(),
+    debug: vi.fn(),
+  })),
+}));
 import {
   buildTokenGenerationUrl,
   validateGitHubToken,
@@ -233,34 +260,36 @@ describe('storeGitHubToken', () => {
     vi.clearAllMocks();
   });
 
-  it('stores token via claude config', async () => {
-    vi.mocked(shell.executeCommand).mockResolvedValue({
-      stdout: '',
-      stderr: '',
-      exitCode: 0,
-      duration: 100,
-      command: 'claude',
-      args: ['config', 'set', 'github_token', 'test_token'],
-    });
+  it('stores token to file with correct permissions', async () => {
+    vi.mocked(fs.existsSync).mockReturnValue(true);
+    vi.mocked(fs.writeFileSync).mockReturnValue(undefined);
 
     const result = await storeGitHubToken('test_token');
     expect(result).toBe(true);
-    expect(shell.executeCommand).toHaveBeenCalledWith('claude', [
-      'config',
-      'set',
-      'github_token',
+    expect(fs.writeFileSync).toHaveBeenCalledWith(
+      expect.stringContaining('github_token'),
       'test_token',
-    ]);
+      { mode: 0o600 }
+    );
+  });
+
+  it('creates .claude directory if missing', async () => {
+    vi.mocked(fs.existsSync).mockReturnValue(false);
+    vi.mocked(fs.mkdirSync).mockReturnValue(undefined);
+    vi.mocked(fs.writeFileSync).mockReturnValue(undefined);
+
+    const result = await storeGitHubToken('test_token');
+    expect(result).toBe(true);
+    expect(fs.mkdirSync).toHaveBeenCalledWith(
+      expect.stringContaining('.claude'),
+      { recursive: true, mode: 0o700 }
+    );
   });
 
   it('returns false on error', async () => {
-    vi.mocked(shell.executeCommand).mockResolvedValue({
-      stdout: '',
-      stderr: 'error',
-      exitCode: 1,
-      duration: 100,
-      command: 'claude',
-      args: ['config', 'set', 'github_token', 'test_token'],
+    vi.mocked(fs.existsSync).mockReturnValue(true);
+    vi.mocked(fs.writeFileSync).mockImplementation(() => {
+      throw new Error('Write error');
     });
 
     const result = await storeGitHubToken('test_token');
@@ -273,36 +302,47 @@ describe('getStoredGitHubToken', () => {
     vi.clearAllMocks();
   });
 
-  it('retrieves stored token', async () => {
+  it('retrieves token from gh auth first', async () => {
+    // Token must be > 20 chars to pass validation
+    const validToken = 'ghp_validTokenFromGitHubCLI123456';
     vi.mocked(shell.executeCommand).mockResolvedValue({
-      stdout: 'ghp_stored_token',
+      stdout: validToken,
       stderr: '',
       exitCode: 0,
       duration: 100,
-      command: 'claude',
-      args: ['config', 'get', 'github_token'],
+      command: 'gh',
+      args: ['auth', 'token'],
     });
 
     const result = await getStoredGitHubToken();
-    expect(result).toBe('ghp_stored_token');
+    expect(result).toBe(validToken);
+    expect(shell.executeCommand).toHaveBeenCalledWith('gh', ['auth', 'token'], { silent: true });
   });
 
-  it('returns undefined when no token stored', async () => {
-    vi.mocked(shell.executeCommand).mockResolvedValue({
-      stdout: '',
-      stderr: '',
-      exitCode: 0,
-      duration: 100,
-      command: 'claude',
-      args: ['config', 'get', 'github_token'],
-    });
+  it('falls back to file when gh auth fails', async () => {
+    const validToken = 'ghp_validFileTokenForTesting123';
+    vi.mocked(shell.executeCommand).mockRejectedValue(new Error('gh not found'));
+    vi.mocked(fs.existsSync).mockReturnValue(true);
+    vi.mocked(fs.readFileSync).mockReturnValue(validToken);
+
+    const result = await getStoredGitHubToken();
+    expect(result).toBe(validToken);
+  });
+
+  it('returns undefined when no token stored anywhere', async () => {
+    vi.mocked(shell.executeCommand).mockRejectedValue(new Error('gh not found'));
+    vi.mocked(fs.existsSync).mockReturnValue(false);
 
     const result = await getStoredGitHubToken();
     expect(result).toBeUndefined();
   });
 
-  it('returns undefined on error', async () => {
+  it('returns undefined on all errors', async () => {
     vi.mocked(shell.executeCommand).mockRejectedValue(new Error('Command failed'));
+    vi.mocked(fs.existsSync).mockReturnValue(true);
+    vi.mocked(fs.readFileSync).mockImplementation(() => {
+      throw new Error('Read error');
+    });
 
     const result = await getStoredGitHubToken();
     expect(result).toBeUndefined();
@@ -314,14 +354,15 @@ describe('isAuthenticated', () => {
     vi.clearAllMocks();
   });
 
-  it('returns true when valid token exists', async () => {
+  it('returns true when valid token exists via gh auth', async () => {
+    const validToken = 'ghp_validTokenFromGitHubCLI123456';
     vi.mocked(shell.executeCommand).mockResolvedValue({
-      stdout: 'ghp_valid_token',
+      stdout: validToken,
       stderr: '',
       exitCode: 0,
       duration: 100,
-      command: 'claude',
-      args: ['config', 'get', 'github_token'],
+      command: 'gh',
+      args: ['auth', 'token'],
     });
 
     mockFetch.mockResolvedValue({
@@ -334,28 +375,39 @@ describe('isAuthenticated', () => {
     expect(result).toBe(true);
   });
 
-  it('returns false when no token stored', async () => {
-    vi.mocked(shell.executeCommand).mockResolvedValue({
-      stdout: '',
-      stderr: '',
-      exitCode: 0,
-      duration: 100,
-      command: 'claude',
-      args: ['config', 'get', 'github_token'],
+  it('returns true when valid token exists in file', async () => {
+    const validToken = 'ghp_validFileTokenForTesting123';
+    vi.mocked(shell.executeCommand).mockRejectedValue(new Error('gh not found'));
+    vi.mocked(fs.existsSync).mockReturnValue(true);
+    vi.mocked(fs.readFileSync).mockReturnValue(validToken);
+
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({ login: 'testuser', id: 12345, type: 'User' }),
+      headers: new Map([['x-oauth-scopes', 'repo']]),
     });
+
+    const result = await isAuthenticated();
+    expect(result).toBe(true);
+  });
+
+  it('returns false when no token stored', async () => {
+    vi.mocked(shell.executeCommand).mockRejectedValue(new Error('gh not found'));
+    vi.mocked(fs.existsSync).mockReturnValue(false);
 
     const result = await isAuthenticated();
     expect(result).toBe(false);
   });
 
   it('returns false when token is invalid', async () => {
+    const invalidToken = 'ghp_invalidTokenThatWillFail123';
     vi.mocked(shell.executeCommand).mockResolvedValue({
-      stdout: 'invalid_token',
+      stdout: invalidToken,
       stderr: '',
       exitCode: 0,
       duration: 100,
-      command: 'claude',
-      args: ['config', 'get', 'github_token'],
+      command: 'gh',
+      args: ['auth', 'token'],
     });
 
     mockFetch.mockResolvedValue({
@@ -374,14 +426,15 @@ describe('getCurrentUser', () => {
     vi.clearAllMocks();
   });
 
-  it('returns user when authenticated', async () => {
+  it('returns user when authenticated via gh auth', async () => {
+    const validToken = 'ghp_validTokenFromGitHubCLI123456';
     vi.mocked(shell.executeCommand).mockResolvedValue({
-      stdout: 'ghp_valid_token',
+      stdout: validToken,
       stderr: '',
       exitCode: 0,
       duration: 100,
-      command: 'claude',
-      args: ['config', 'get', 'github_token'],
+      command: 'gh',
+      args: ['auth', 'token'],
     });
 
     mockFetch.mockResolvedValue({
@@ -401,14 +454,8 @@ describe('getCurrentUser', () => {
   });
 
   it('returns undefined when not authenticated', async () => {
-    vi.mocked(shell.executeCommand).mockResolvedValue({
-      stdout: '',
-      stderr: '',
-      exitCode: 0,
-      duration: 100,
-      command: 'claude',
-      args: ['config', 'get', 'github_token'],
-    });
+    vi.mocked(shell.executeCommand).mockRejectedValue(new Error('gh not found'));
+    vi.mocked(fs.existsSync).mockReturnValue(false);
 
     const result = await getCurrentUser();
     expect(result).toBeUndefined();
@@ -420,27 +467,29 @@ describe('clearAuthentication', () => {
     vi.clearAllMocks();
   });
 
-  it('clears stored token', async () => {
-    vi.mocked(shell.executeCommand).mockResolvedValue({
-      stdout: '',
-      stderr: '',
-      exitCode: 0,
-      duration: 100,
-      command: 'claude',
-      args: ['config', 'unset', 'github_token'],
-    });
+  it('clears stored token file', async () => {
+    vi.mocked(fs.existsSync).mockReturnValue(true);
+    vi.mocked(fs.unlinkSync).mockReturnValue(undefined);
 
     const result = await clearAuthentication();
     expect(result).toBe(true);
-    expect(shell.executeCommand).toHaveBeenCalledWith('claude', [
-      'config',
-      'unset',
-      'github_token',
-    ]);
+    expect(fs.unlinkSync).toHaveBeenCalledWith(
+      expect.stringContaining('github_token')
+    );
+  });
+
+  it('returns true when no token file exists', async () => {
+    vi.mocked(fs.existsSync).mockReturnValue(false);
+
+    const result = await clearAuthentication();
+    expect(result).toBe(true);
   });
 
   it('returns false on error', async () => {
-    vi.mocked(shell.executeCommand).mockRejectedValue(new Error('Command failed'));
+    vi.mocked(fs.existsSync).mockReturnValue(true);
+    vi.mocked(fs.unlinkSync).mockImplementation(() => {
+      throw new Error('Delete error');
+    });
 
     const result = await clearAuthentication();
     expect(result).toBe(false);

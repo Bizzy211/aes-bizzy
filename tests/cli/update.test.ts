@@ -125,7 +125,7 @@ describe('Update Command', () => {
       const result = await runUpdate({});
 
       expect(result.success).toBe(false);
-      expect(result.errors).toContain('No GitHub token found. Run "claude-ecosystem init" to authenticate.');
+      expect(result.errors).toContain('No GitHub token found. Run "aes-bizzy init" to authenticate.');
     });
 
     it('should fail if ecosystem config cannot be loaded', async () => {
@@ -138,7 +138,7 @@ describe('Update Command', () => {
       const result = await runUpdate({});
 
       expect(result.success).toBe(false);
-      expect(result.errors).toContain('Failed to load ecosystem config. Run "claude-ecosystem init" first.');
+      expect(result.errors).toContain('Failed to load ecosystem config. Run "aes-bizzy init" first.');
     });
 
     it('should succeed when already up to date', async () => {
