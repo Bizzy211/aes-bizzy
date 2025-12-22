@@ -7,12 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.0] - 2025-12-22
+
 ### Added
-- Comprehensive test suite with 400+ tests covering all modules
+
+#### /bizzy Orchestration System
+- **Research Orchestrator** (`src/bizzy/research-orchestrator.ts`)
+  - Exa.ai integration for web search and code context
+  - Ref.tools integration for documentation lookup
+  - Multi-source research aggregation with fallback handling
+  - Code example extraction and categorization
+  - 43 comprehensive tests
+
+- **PRD Generator** (`src/bizzy/prd-generator.ts`)
+  - AI-powered Product Requirements Document generation
+  - Project type detection (dashboard, api, web, mobile, cli, library)
+  - Technology stack recommendations
+  - Requirement extraction from natural language
+  - 58 comprehensive tests
+
+- **Repository Manager** (`src/integrations/github-automation/repository-manager.ts`)
+  - Automated GitHub repository creation
+  - Default agent labels and workflow labels
+  - Milestone phase management
+  - Project file upload and initialization
+  - 34 comprehensive tests
+
+#### Testing
+- Comprehensive test suite with 1459+ tests
 - Integration tests for multi-agent orchestration
-- Integration tests for context awareness
 - Integration tests for Beads context persistence
-- Integration tests for issue management workflow E2E
+- Integration tests for GitHub project management
+- End-to-end project lifecycle tests
+
+### Changed
+- Cleaned up repository structure
+- Moved development artifacts to `.development/` (gitignored)
+- Repository now contains only npm-required files
 
 ## [1.0.0] - 2024-12-22
 
@@ -76,6 +107,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-[Unreleased]: https://github.com/jhc/claude-ecosystem/compare/v1.0.0...HEAD
-[1.0.0]: https://github.com/jhc/claude-ecosystem/compare/v0.1.0...v1.0.0
-[0.1.0]: https://github.com/jhc/claude-ecosystem/releases/tag/v0.1.0
+[Unreleased]: https://github.com/bizzy211/aes-bizzy/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/bizzy211/aes-bizzy/compare/v1.0.0...v1.1.0
+[1.0.0]: https://github.com/bizzy211/aes-bizzy/compare/v0.1.0...v1.0.0
+[0.1.0]: https://github.com/bizzy211/aes-bizzy/releases/tag/v0.1.0

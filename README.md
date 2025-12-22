@@ -3,7 +3,7 @@
 ## Agentic Ecosystem by Bizzy - Multi-Agent Orchestration Platform for Claude Code
 
 [![npm version](https://img.shields.io/npm/v/@bizzy211/aes-bizzy.svg)](https://www.npmjs.com/package/@bizzy211/aes-bizzy)
-[![Build Status](https://img.shields.io/github/actions/workflow/status/bizzy211/aes-bizzy/ci.yml?branch=main)](https://github.com/bizzy211/aes-bizzy/actions)
+[![Build Status](https://img.shields.io/github/actions/workflow/status/bizzy211/aes-bizzy/ci.yml?branch=master)](https://github.com/bizzy211/aes-bizzy/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Node.js](https://img.shields.io/node/v/@bizzy211/aes-bizzy.svg)](https://nodejs.org)
 
@@ -353,7 +353,7 @@ TaskMaster enables:
 - Track dependencies and blockers across the agent team
 - Generate progress reports and burndown metrics
 
-See the [Task Master documentation](.taskmaster/CLAUDE.md) for detailed usage.
+See the [Task Master documentation](https://github.com/task-master-ai/task-master) for detailed usage.
 
 ### Beads: Shared Context Across Agent Teams
 
@@ -473,7 +473,7 @@ if (result.success) {
 }
 ```
 
-See [API.md](./API.md) for full API documentation.
+See the source code in `src/` for programmatic usage details.
 
 ## Development
 
@@ -508,7 +508,13 @@ npm run typecheck
 
 ## Contributing
 
-See [CONTRIBUTING.md](./CONTRIBUTING.md) for development setup, testing instructions, and PR guidelines.
+Contributions are welcome! Please:
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Run tests (`npm test`)
+4. Commit your changes (`git commit -m 'Add amazing feature'`)
+5. Push to the branch (`git push origin feature/amazing-feature`)
+6. Open a Pull Request
 
 ## License
 
