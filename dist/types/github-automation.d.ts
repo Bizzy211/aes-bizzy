@@ -233,4 +233,118 @@ export interface AgentCapabilityCache {
     loadedAt: string;
     ttlMs: number;
 }
+/**
+ * Configuration for creating a new repository
+ */
+export interface RepoConfig {
+    name: string;
+    description?: string;
+    private: boolean;
+    org?: string;
+    autoInit?: boolean;
+}
+/**
+ * Result of repository creation
+ */
+export interface RepoResult {
+    success: boolean;
+    repoUrl: string;
+    cloneUrl: string;
+    error?: string;
+}
+/**
+ * Options for initializing repository content
+ */
+export interface InitOptions {
+    readme: string | boolean;
+    gitignore: string | boolean;
+    license: 'MIT' | 'Apache-2.0' | 'GPL-3.0' | false;
+}
+/**
+ * Result of repository initialization
+ */
+export interface InitResult {
+    success: boolean;
+    filesCreated: string[];
+    initialCommit: string;
+    error?: string;
+}
+/**
+ * Result of label creation
+ */
+export interface LabelCreateResult {
+    success: boolean;
+    labelsCreated: string[];
+    skipped: string[];
+    error?: string;
+}
+/**
+ * Milestone phase configuration
+ */
+export interface MilestonePhase {
+    title: string;
+    description: string;
+    dueDate?: Date;
+    priority: 'high' | 'medium' | 'low';
+}
+/**
+ * Result of milestone creation
+ */
+export interface MilestoneResult {
+    success: boolean;
+    milestonesCreated: Array<{
+        title: string;
+        number: number;
+        url: string;
+    }>;
+    error?: string;
+}
+/**
+ * File upload specification
+ */
+export interface FileUpload {
+    path: string;
+    content: string;
+    encoding?: 'utf-8' | 'base64';
+    message?: string;
+}
+/**
+ * Result of file upload
+ */
+export interface UploadResult {
+    success: boolean;
+    filesUploaded: string[];
+    commit: string;
+    error?: string;
+}
+/**
+ * Complete repository setup configuration
+ */
+export interface CompleteRepoConfig extends RepoConfig {
+    initialFiles?: FileUpload[];
+    labels?: boolean;
+    milestones?: MilestonePhase[];
+    protectMain?: boolean;
+}
+/**
+ * Complete repository setup result
+ */
+export interface SetupResult {
+    success: boolean;
+    repoUrl: string;
+    summary: {
+        labels: number;
+        milestones: number;
+        files: number;
+    };
+    errors: string[];
+}
+/**
+ * Default label configuration for agent-based workflow
+ */
+export interface AgentLabel {
+    name: string;
+    description: string;
+    color: string;
+}
 //# sourceMappingURL=github-automation.d.ts.map

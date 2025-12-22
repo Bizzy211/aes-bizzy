@@ -26,6 +26,11 @@ node_modules/
 
 # Build/Test output
 coverage/
+*.tsbuildinfo
+
+# Development artifacts (local dev config, not part of npm package)
+.development/
+.claude/
 
 # Misc
 nul

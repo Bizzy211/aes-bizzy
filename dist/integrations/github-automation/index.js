@@ -14,4 +14,6 @@ export { getAllLabelMappings, getAgentsForLabel, getAgentsForLabels, addCustomMa
 export { fetchIssue, fetchOpenIssues, postComment, addLabels, assignIssue, triageIssue, batchAssignIssues, getAssignmentRecommendation, shouldExcludeIssue, processIssueEvent, generateAssignmentComment, generateTriageComment, getAutomationLog, clearAutomationLog, } from './assignment-system.js';
 // PR linking
 export { extractIssueReferences, parsePRForIssues, determineLinkType, createPRLinkEvent, fetchPRDetails, getIssueTimeline, findLinkedPRs, postPRStatusComment, closeIssue, processPRMerge, processPROpen, processPRClose, syncPRStatus, generatePRSummary, } from './pr-linking.js';
+// Repository management
+export { createRepository, initializeRepo, createDefaultLabels, createMilestones, pushProjectFiles, setupRepository, deleteRepository, repositoryExists, getRepository, DEFAULT_AGENT_LABELS, WORKFLOW_LABELS, DEFAULT_MILESTONE_PHASES, GitHubAPIError, } from './repository-manager.js';
 //# sourceMappingURL=index.js.map
