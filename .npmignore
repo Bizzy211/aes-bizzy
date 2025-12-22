@@ -1,0 +1,70 @@
+# Source files (use dist/ instead)
+src/
+
+# Tests
+tests/
+*.test.ts
+*.spec.ts
+__tests__/
+coverage/
+
+# Development config
+.eslintrc*
+.prettierrc*
+tsconfig.json
+vitest.config.*
+.editorconfig
+
+# Environment and secrets
+.env
+.env.*
+*.local
+
+# IDE and editor
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Git
+.git/
+.gitignore
+
+# Claude and Task Master (development only)
+.claude/
+.taskmaster/
+.beads/
+CLAUDE.md
+Claude Files/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Build artifacts (temporary)
+*.tsbuildinfo
+
+# Documentation source (README is included via files)
+API.md
+CONTRIBUTING.md
+docs/
+
+# GitHub
+.github/
+
+# Package manager locks (install fresh)
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# Misc
+*.tgz
+*.tar.gz
+.npmrc

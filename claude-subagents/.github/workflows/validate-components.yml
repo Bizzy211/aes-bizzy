@@ -1,0 +1,60 @@
+name: Validate Components
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate directory structure
+        run: |
+          echo "Checking required directories..."
+          for dir in agents/core agents/meta agents/generated hooks/essential hooks/recommended skills/essential commands/essential manifests templates docs; do
+            if [ ! -d "$dir" ]; then
+              echo "Missing directory: $dir"
+              exit 1
+            fi
+          done
+          echo "All required directories exist"
+
+      - name: Validate manifests
+        run: |
+          echo "Validating manifest files..."
+          for manifest in manifests/*.json; do
+            if [ -f "$manifest" ]; then
+              python3 -m json.tool "$manifest" > /dev/null || exit 1
+              echo "Valid: $manifest"
+            fi
+          done
+
+      - name: Validate agent-index.json
+        run: |
+          if [ -f "manifests/agent-index.json" ]; then
+            python3 -c "
+          import json
+          with open('manifests/agent-index.json') as f:
+              data = json.load(f)
+          for name, info in data.get('agents', {}).items():
+              path = info.get('path', '')
+              if not path:
+                  raise ValueError(f'Missing path for agent: {name}')
+          print('agent-index.json is valid')
+          "
+          fi
+
+      - name: Check README files
+        run: |
+          echo "Checking README files..."
+          for dir in agents hooks skills commands scripts docs; do
+            if [ ! -f "$dir/README.md" ]; then
+              echo "Missing README: $dir/README.md"
+              exit 1
+            fi
+          done
+          echo "All README files present"

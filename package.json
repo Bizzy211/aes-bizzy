@@ -1,0 +1,112 @@
+{
+  "name": "@bizzy211/aes-bizzy",
+  "version": "1.0.2",
+  "description": "A.E.S - Bizzy: Multi-Agent Orchestration Platform for Claude Code. Ship 10x faster with autonomous AI development teams coordinated by PM-Lead. Beads context management, GitHub Issues integration, TaskMaster intelligence.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "aes-bizzy": "./bin/claude-ecosystem.js",
+    "aes": "./bin/claude-ecosystem.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "build:watch": "tsc --watch",
+    "dev": "tsx src/cli/index.ts",
+    "start": "node dist/cli/index.js",
+    "test": "vitest",
+    "test:run": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "lint": "eslint src",
+    "lint:fix": "eslint src --fix",
+    "typecheck": "tsc --noEmit",
+    "clean": "rimraf dist",
+    "prebuild": "npm run clean",
+    "prepublishOnly": "npm run test:run && npm run lint && npm run typecheck && npm run build",
+    "version": "npm run build",
+    "postversion": "git push && git push --tags",
+    "release": "npm version patch && npm publish",
+    "release:minor": "npm version minor && npm publish",
+    "release:major": "npm version major && npm publish",
+    "pack:dry-run": "npm pack --dry-run"
+  },
+  "keywords": [
+    "aes-bizzy",
+    "multi-agent",
+    "orchestration",
+    "claude",
+    "claude-code",
+    "anthropic",
+    "ai",
+    "agents",
+    "pm-lead",
+    "agent-teams",
+    "beads-context",
+    "github-issues",
+    "taskmaster-ai",
+    "cli",
+    "mcp",
+    "mcp-servers",
+    "beads",
+    "task-master",
+    "autonomous-ai",
+    "ai-orchestration",
+    "context-management",
+    "agent-coordination",
+    "llm",
+    "ai-development",
+    "dev-team-automation"
+  ],
+  "author": "Bizzy",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bizzy211/aes-bizzy.git"
+  },
+  "bugs": {
+    "url": "https://github.com/bizzy211/aes-bizzy/issues"
+  },
+  "homepage": "https://github.com/bizzy211/aes-bizzy#readme",
+  "publishConfig": {
+    "access": "restricted",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "files": [
+    "dist",
+    "bin",
+    "templates",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
+  "dependencies": {
+    "@clack/prompts": "^0.7.0",
+    "chalk": "^5.3.0",
+    "commander": "^12.1.0",
+    "execa": "^9.5.2",
+    "fs-extra": "^11.2.0",
+    "gradient-string": "^3.0.0",
+    "ora": "^8.1.1",
+    "semver": "^7.7.3",
+    "simple-git": "^3.27.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.2",
+    "@types/fs-extra": "^11.0.4",
+    "@types/gradient-string": "^1.1.6",
+    "@types/node": "^22.10.2",
+    "@types/semver": "^7.7.1",
+    "@typescript-eslint/eslint-plugin": "^8.50.0",
+    "@typescript-eslint/parser": "^8.50.0",
+    "@vitest/coverage-v8": "^2.1.9",
+    "eslint": "^9.39.2",
+    "rimraf": "^6.0.1",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "typescript-eslint": "^8.50.0",
+    "vitest": "^2.1.8"
+  }
+}

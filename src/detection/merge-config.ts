@@ -1,0 +1,519 @@
+/**
+ * Configuration Merge Logic
+ *
+ * Smart merge strategies for combining existing and new configurations
+ * while preserving user customizations.
+ */
+
+import * as fs from 'node:fs/promises';
+import * as path from 'node:path';
+import type {
+  MergeStrategy,
+  Conflict,
+  ConflictResolution,
+  PreservedSettings,
+} from '../types/detection.js';
+
+/**
+ * Settings keys that should always be preserved from existing config
+ */
+const PRESERVED_KEYS = [
+  'claudeDir',
+  'editor',
+  'customPaths',
+  'GITHUB_TOKEN',
+  'ANTHROPIC_API_KEY',
+  'OPENAI_API_KEY',
+  'PERPLEXITY_API_KEY',
+];
+
+/**
+ * Settings keys that contain arrays and should be merged
+ */
+const ARRAY_MERGE_KEYS = ['allowedTools'];
+
+/**
+ * Settings keys that contain objects and should be deep merged
+ */
+const OBJECT_MERGE_KEYS = ['mcpServers', 'env'];
+
+/**
+ * Merge two arrays and remove duplicates
+ */
+export function mergeArrays<T>(existing: T[], newItems: T[]): T[] {
+  const combined = [...existing, ...newItems];
+  return [...new Set(combined)];
+}
+
+/**
+ * Deep merge two objects
+ */
+export function deepMerge(
+  target: Record<string, unknown>,
+  source: Record<string, unknown>,
+  preferExisting: boolean = true
+): Record<string, unknown> {
+  const result = { ...target };
+
+  for (const key of Object.keys(source)) {
+    const targetValue = target[key];
+    const sourceValue = source[key];
+
+    if (
+      targetValue !== undefined &&
+      typeof targetValue === 'object' &&
+      targetValue !== null &&
+      typeof sourceValue === 'object' &&
+      sourceValue !== null &&
+      !Array.isArray(targetValue) &&
+      !Array.isArray(sourceValue)
+    ) {
+      // Recursively merge objects
+      result[key] = deepMerge(
+        targetValue as Record<string, unknown>,
+        sourceValue as Record<string, unknown>,
+        preferExisting
+      );
+    } else if (Array.isArray(targetValue) && Array.isArray(sourceValue)) {
+      // Merge arrays
+      result[key] = mergeArrays(targetValue, sourceValue);
+    } else if (targetValue === undefined || !preferExisting) {
+      // Add new value or override if not preferring existing
+      result[key] = sourceValue;
+    }
+    // If preferExisting and targetValue exists, keep it
+  }
+
+  return result;
+}
+
+/**
+ * Extract preserved settings from existing config
+ */
+export function extractPreservedSettings(
+  existing: Record<string, unknown>
+): PreservedSettings {
+  const preserved: PreservedSettings = {};
+
+  // Extract claudeDir
+  if (typeof existing.claudeDir === 'string') {
+    preserved.claudeDir = existing.claudeDir;
+  }
+
+  // Extract editor
+  if (typeof existing.editor === 'string') {
+    preserved.editor = existing.editor;
+  }
+
+  // Extract custom paths
+  if (typeof existing.customPaths === 'object' && existing.customPaths !== null) {
+    preserved.customPaths = existing.customPaths as Record<string, string>;
+  }
+
+  // Track API token presence (not values)
+  const apiTokens: Record<string, boolean> = {};
+  const envObj = existing.env as Record<string, unknown> | undefined;
+
+  if (existing.GITHUB_TOKEN || envObj?.GITHUB_TOKEN) {
+    apiTokens.GITHUB_TOKEN = true;
+  }
+  if (existing.ANTHROPIC_API_KEY || envObj?.ANTHROPIC_API_KEY) {
+    apiTokens.ANTHROPIC_API_KEY = true;
+  }
+  if (existing.OPENAI_API_KEY || envObj?.OPENAI_API_KEY) {
+    apiTokens.OPENAI_API_KEY = true;
+  }
+  if (existing.PERPLEXITY_API_KEY || envObj?.PERPLEXITY_API_KEY) {
+    apiTokens.PERPLEXITY_API_KEY = true;
+  }
+
+  if (Object.keys(apiTokens).length > 0) {
+    preserved.apiTokens = apiTokens;
+  }
+
+  // Extract allowed tools
+  if (Array.isArray(existing.allowedTools)) {
+    preserved.allowedTools = existing.allowedTools as string[];
+  }
+
+  // Extract MCP servers
+  if (typeof existing.mcpServers === 'object' && existing.mcpServers !== null) {
+    preserved.mcpServers = existing.mcpServers as Record<string, unknown>;
+  }
+
+  return preserved;
+}
+
+/**
+ * Merge MCP servers configuration
+ * Keeps existing server configs, adds new servers, merges env variables
+ */
+export function mergeMCPServers(
+  existing: Record<string, unknown>,
+  newServers: Record<string, unknown>,
+  preferExisting: boolean = true
+): Record<string, unknown> {
+  const result: Record<string, unknown> = {};
+
+  // Start with existing servers
+  for (const [name, config] of Object.entries(existing)) {
+    result[name] = config;
+  }
+
+  // Add or update from new servers
+  for (const [name, newConfig] of Object.entries(newServers)) {
+    const existingConfig = result[name] as Record<string, unknown> | undefined;
+
+    if (!existingConfig) {
+      // New server - add it
+      result[name] = newConfig;
+    } else if (!preferExisting) {
+      // Prefer new - but preserve env credentials
+      const newConfigObj = newConfig as Record<string, unknown>;
+      const mergedEnv = mergeEnvVariables(
+        existingConfig.env as Record<string, unknown> | undefined,
+        newConfigObj.env as Record<string, unknown> | undefined
+      );
+      result[name] = {
+        ...newConfigObj,
+        env: mergedEnv,
+      };
+    } else {
+      // Prefer existing - but add any new env variables
+      const newConfigObj = newConfig as Record<string, unknown>;
+      const mergedEnv = mergeEnvVariables(
+        existingConfig.env as Record<string, unknown> | undefined,
+        newConfigObj.env as Record<string, unknown> | undefined,
+        true
+      );
+      result[name] = {
+        ...existingConfig,
+        env: mergedEnv,
+      };
+    }
+  }
+
+  return result;
+}
+
+/**
+ * Merge environment variables, preserving credentials
+ */
+function mergeEnvVariables(
+  existing: Record<string, unknown> | undefined,
+  newEnv: Record<string, unknown> | undefined,
+  preferExisting: boolean = true
+): Record<string, unknown> {
+  if (!existing && !newEnv) return {};
+  if (!existing) return newEnv || {};
+  if (!newEnv) return existing;
+
+  const result = { ...existing };
+
+  for (const [key, value] of Object.entries(newEnv)) {
+    // Credential keys should always be preserved from existing
+    if (isCredentialKey(key) && existing[key]) {
+      continue;
+    }
+
+    // Add new non-credential keys or update if not preferring existing
+    if (!result[key] || !preferExisting) {
+      result[key] = value;
+    }
+  }
+
+  return result;
+}
+
+/**
+ * Check if a key is a credential key
+ */
+function isCredentialKey(key: string): boolean {
+  const credentialPatterns = [
+    'TOKEN',
+    'KEY',
+    'SECRET',
+    'PASSWORD',
+    'CREDENTIAL',
+    'AUTH',
+  ];
+  const upperKey = key.toUpperCase();
+  return credentialPatterns.some((pattern) => upperKey.includes(pattern));
+}
+
+/**
+ * Merge allowed tools arrays, deduplicating
+ */
+export function mergeAllowedTools(
+  existing: string[],
+  newTools: string[]
+): string[] {
+  // Normalize tool names (trim whitespace, consistent casing)
+  const normalizedExisting = existing.map((t) => t.trim());
+  const normalizedNew = newTools.map((t) => t.trim());
+
+  // Combine and deduplicate
+  const combined = new Set([...normalizedExisting, ...normalizedNew]);
+
+  return Array.from(combined).sort();
+}
+
+/**
+ * Main merge function with strategy support
+ */
+export function mergeConfigs(
+  existingConfig: Record<string, unknown>,
+  newConfig: Record<string, unknown>,
+  strategy: MergeStrategy
+): {
+  merged: Record<string, unknown>;
+  conflicts: Conflict[];
+} {
+  const conflicts: Conflict[] = [];
+  let merged: Record<string, unknown>;
+
+  switch (strategy) {
+    case 'preserve-existing':
+      merged = mergePreserveExisting(existingConfig, newConfig, conflicts);
+      break;
+
+    case 'prefer-new':
+      merged = mergePreferNew(existingConfig, newConfig, conflicts);
+      break;
+
+    case 'interactive':
+      // Return conflicts for user resolution
+      merged = { ...existingConfig };
+      detectSettingConflicts(existingConfig, newConfig, conflicts);
+      break;
+
+    default:
+      merged = { ...existingConfig };
+  }
+
+  return { merged, conflicts };
+}
+
+/**
+ * Merge with preserve-existing strategy
+ */
+function mergePreserveExisting(
+  existing: Record<string, unknown>,
+  newConfig: Record<string, unknown>,
+  _conflicts: Conflict[]
+): Record<string, unknown> {
+  const result = { ...existing };
+
+  // Merge allowedTools
+  if (Array.isArray(existing.allowedTools) || Array.isArray(newConfig.allowedTools)) {
+    result.allowedTools = mergeAllowedTools(
+      (existing.allowedTools as string[]) || [],
+      (newConfig.allowedTools as string[]) || []
+    );
+  }
+
+  // Merge MCP servers
+  if (existing.mcpServers || newConfig.mcpServers) {
+    result.mcpServers = mergeMCPServers(
+      (existing.mcpServers as Record<string, unknown>) || {},
+      (newConfig.mcpServers as Record<string, unknown>) || {},
+      true // prefer existing
+    );
+  }
+
+  // Add new keys that don't exist
+  for (const key of Object.keys(newConfig)) {
+    if (!(key in result) && !PRESERVED_KEYS.includes(key)) {
+      result[key] = newConfig[key];
+    }
+  }
+
+  return result;
+}
+
+/**
+ * Merge with prefer-new strategy
+ */
+function mergePreferNew(
+  existing: Record<string, unknown>,
+  newConfig: Record<string, unknown>,
+  _conflicts: Conflict[]
+): Record<string, unknown> {
+  // Start with new config
+  const result = { ...newConfig };
+
+  // Preserve user-specific settings
+  for (const key of PRESERVED_KEYS) {
+    if (key in existing) {
+      result[key] = existing[key];
+    }
+  }
+
+  // Preserve environment variables with credentials
+  const existingEnv = existing.env as Record<string, unknown> | undefined;
+  const newEnv = newConfig.env as Record<string, unknown> | undefined;
+  if (existingEnv) {
+    result.env = mergeEnvVariables(existingEnv, newEnv, false);
+  }
+
+  // Merge allowedTools (combine both)
+  if (Array.isArray(existing.allowedTools) || Array.isArray(newConfig.allowedTools)) {
+    result.allowedTools = mergeAllowedTools(
+      (existing.allowedTools as string[]) || [],
+      (newConfig.allowedTools as string[]) || []
+    );
+  }
+
+  // Merge MCP servers (prefer new but keep credentials)
+  if (existing.mcpServers || newConfig.mcpServers) {
+    result.mcpServers = mergeMCPServers(
+      (existing.mcpServers as Record<string, unknown>) || {},
+      (newConfig.mcpServers as Record<string, unknown>) || {},
+      false // prefer new
+    );
+  }
+
+  return result;
+}
+
+/**
+ * Detect settings conflicts for interactive resolution
+ */
+function detectSettingConflicts(
+  existing: Record<string, unknown>,
+  newConfig: Record<string, unknown>,
+  conflicts: Conflict[]
+): void {
+  for (const key of Object.keys(newConfig)) {
+    // Skip preserved keys
+    if (PRESERVED_KEYS.includes(key)) continue;
+
+    const existingValue = existing[key];
+    const newValue = newConfig[key];
+
+    if (existingValue !== undefined && JSON.stringify(existingValue) !== JSON.stringify(newValue)) {
+      conflicts.push({
+        type: 'setting',
+        name: key,
+        existingValue,
+        newValue,
+        isModified: true,
+        suggestedResolution: ARRAY_MERGE_KEYS.includes(key) || OBJECT_MERGE_KEYS.includes(key)
+          ? 'merge'
+          : 'backup',
+      });
+    }
+  }
+}
+
+/**
+ * Apply conflict resolutions to merged config
+ */
+export function applyResolutions(
+  baseConfig: Record<string, unknown>,
+  conflicts: Conflict[],
+  resolutions: Map<string, ConflictResolution>
+): Record<string, unknown> {
+  const result = { ...baseConfig };
+
+  for (const conflict of conflicts) {
+    const resolution = resolutions.get(conflict.name) || conflict.suggestedResolution;
+
+    switch (resolution) {
+      case 'replace':
+        result[conflict.name] = conflict.newValue;
+        break;
+
+      case 'skip':
+        result[conflict.name] = conflict.existingValue;
+        break;
+
+      case 'merge':
+        if (Array.isArray(conflict.existingValue) && Array.isArray(conflict.newValue)) {
+          result[conflict.name] = mergeArrays(
+            conflict.existingValue,
+            conflict.newValue
+          );
+        } else if (
+          typeof conflict.existingValue === 'object' &&
+          typeof conflict.newValue === 'object' &&
+          conflict.existingValue !== null &&
+          conflict.newValue !== null
+        ) {
+          result[conflict.name] = deepMerge(
+            conflict.existingValue as Record<string, unknown>,
+            conflict.newValue as Record<string, unknown>
+          );
+        } else {
+          result[conflict.name] = conflict.newValue;
+        }
+        break;
+
+      case 'backup':
+        // Keep existing, new value will be backed up elsewhere
+        result[conflict.name] = conflict.existingValue;
+        break;
+    }
+  }
+
+  return result;
+}
+
+/**
+ * Read and parse a JSON configuration file
+ */
+export async function readConfig(filePath: string): Promise<Record<string, unknown>> {
+  try {
+    const content = await fs.readFile(filePath, 'utf-8');
+    return JSON.parse(content);
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * Write a configuration to file
+ */
+export async function writeConfig(
+  filePath: string,
+  config: Record<string, unknown>
+): Promise<void> {
+  const dir = path.dirname(filePath);
+  await fs.mkdir(dir, { recursive: true });
+  await fs.writeFile(filePath, JSON.stringify(config, null, 2), 'utf-8');
+}
+
+/**
+ * Merge two settings.json files
+ */
+export async function mergeSettingsFiles(
+  existingPath: string,
+  newPath: string,
+  outputPath: string,
+  strategy: MergeStrategy
+): Promise<{ success: boolean; conflicts: Conflict[] }> {
+  try {
+    const existing = await readConfig(existingPath);
+    const newConfig = await readConfig(newPath);
+
+    const { merged, conflicts } = mergeConfigs(existing, newConfig, strategy);
+
+    if (strategy !== 'interactive' || conflicts.length === 0) {
+      await writeConfig(outputPath, merged);
+    }
+
+    return { success: true, conflicts };
+  } catch {
+    return {
+      success: false,
+      conflicts: [{
+        type: 'setting',
+        name: 'file',
+        existingValue: existingPath,
+        newValue: newPath,
+        isModified: true,
+        suggestedResolution: 'backup',
+      }],
+    };
+  }
+}

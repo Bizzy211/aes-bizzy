@@ -1,0 +1,304 @@
+{
+  "mcpServers": {
+    "task-master-ai": {
+      "type": "stdio",
+      "command": "cmd",
+      "args": [
+        "/c",
+        "npx",
+        "-y",
+        "task-master-ai@latest"
+      ],
+      "env": {
+        "TASK_MASTER_TOOLS": "all",
+        "CLAUDE_CODE_GIT_BASH_PATH": "C:\\Git\\usr\\bin\\bash.exe"
+      }
+    },
+    "ref": {
+      "autoApprove": [
+        "search",
+        "read"
+      ],
+      "disabled": false,
+      "timeout": 60,
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@anthropic-ai/ref-mcp"
+      ],
+      "env": {
+        "REF_API_KEY": "ref-4fe729f81cd715528562"
+      }
+    },
+    "exa": {
+      "autoApprove": [
+        "web_search_exa",
+        "research_paper_search",
+        "twitter_search",
+        "company_research",
+        "crawling",
+        "competitor_finder"
+      ],
+      "disabled": false,
+      "timeout": 60,
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "exa-mcp-server"
+      ],
+      "env": {
+        "EXA_API_KEY": "3e497e2d-a4fb-425b-b247-2c8faa13217d"
+      }
+    },
+    "Cisco Security App Supabase": {
+      "_old_project_ref": "ghbarzrzcgfoctsslpzl",
+      "_current_project_ref_note": "Changed to lruiqpifsueapdapyvnh on 2025-01-26",
+      "autoApprove": [],
+      "timeout": 60,
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@supabase/mcp-server-supabase@latest",
+        "--project-ref=lruiqpifsueapdapyvnh"
+      ],
+      "env": {
+        "SUPABASE_ACCESS_TOKEN": "sbp_878cfa809ab5ccc9cac83060404bb41b63472f11"
+      }
+    },
+    "supabase-2": {
+      "disabled": false,
+      "timeout": 60,
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@joshuarileydev/supabase-mcp-server"
+      ],
+      "env": {
+        "SUPABASE_API_KEY": "sbp_878cfa809ab5ccc9cac83060404bb41b63472f11"
+      }
+    },
+    "github.com/mendableai/firecrawl-mcp-server": {
+      "autoApprove": [
+        "firecrawl_search",
+        "firecrawl_map",
+        "firecrawl_scrape"
+      ],
+      "disabled": false,
+      "timeout": 60,
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "firecrawl-mcp"
+      ],
+      "env": {
+        "FIRECRAWL_API_KEY": "fc-52378c3f037f4976abe95fa0d4473b68"
+      }
+    },
+    "Magic UX/UI": {
+      "autoApprove": [
+        "21st_magic_component_builder",
+        "logo_search",
+        "21st_magic_component_inspiration",
+        "21st_magic_component_refiner"
+      ],
+      "disabled": false,
+      "timeout": 60,
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "--prefer-offline",
+        "-y",
+        "@21st-dev/magic@latest"
+      ],
+      "env": {
+        "API_KEY": "64aff77ee20251d65caa423a26595662165683f8e3d7fec9b1ce0ddde7ba82ff"
+      }
+    },
+    "shadcn-ui-server": {
+      "autoApprove": [
+        "list_shadcn_components",
+        "get_component_details",
+        "get_component_examples",
+        "search_components"
+      ],
+      "disabled": false,
+      "timeout": 60,
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "shadcn-ui-mcp-server"
+      ]
+    },
+    "mcp-installer": {
+      "autoApprove": [
+        "install_repo_mcp_server",
+        "install_local_mcp_server"
+      ],
+      "disabled": false,
+      "timeout": 60,
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "@anaisbetts/mcp-installer"
+      ]
+    },
+    "sequential-thinking": {
+      "autoApprove": [
+        "sequential_thinking",
+        "problem_breakdown",
+        "analyze_problem",
+        "step_by_step_plan"
+      ],
+      "disabled": false,
+      "timeout": 60,
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "sequential-thinking-mcp"
+      ]
+    },
+    "desktop-commander": {
+      "autoApprove": [
+        "read_file",
+        "write_file",
+        "list_directory",
+        "search_files",
+        "search_code",
+        "get_file_info",
+        "create_directory",
+        "move_file",
+        "get_config",
+        "start_process",
+        "interact_with_process"
+      ],
+      "disabled": false,
+      "timeout": 60,
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "@wonderwhy-er/desktop-commander@latest"
+      ]
+    },
+    "playwright-mcp-server": {
+      "autoApprove": [
+        "playwright_navigate",
+        "playwright_screenshot",
+        "playwright_click",
+        "playwright_fill",
+        "playwright_get_visible_text"
+      ],
+      "disabled": false,
+      "timeout": 60,
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@executeautomation/playwright-mcp-server"
+      ]
+    },
+    "memory": {
+      "autoApprove": [
+        "create_memory",
+        "search_memory",
+        "update_memory",
+        "delete_memory"
+      ],
+      "disabled": false,
+      "timeout": 60,
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-memory"
+      ]
+    },
+    "superdesign-mcp-server": {
+      "autoApprove": [
+        "superdesign_generate",
+        "superdesign_iterate",
+        "superdesign_list",
+        "superdesign_gallery",
+        "superdesign_extract_system",
+        "superdesign_delete",
+        "superdesign_cleanup",
+        "superdesign_live_gallery"
+      ],
+      "disabled": false,
+      "timeout": 60,
+      "type": "stdio",
+      "command": "node",
+      "args": [
+        "/root/superdesign-mcp-claude-code/dist/index.js"
+      ],
+      "env": {}
+    },
+    "tavily-search-server": {
+      "autoApprove": [
+        "tavily_search"
+      ],
+      "disabled": false,
+      "timeout": 60,
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "tavily-mcp"
+      ],
+      "env": {
+        "TAVILY_API_KEY": "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"
+      }
+    },
+    "projectmgr-context": {
+      "autoApprove": [
+        "create_project",
+        "list_projects",
+        "add_requirement",
+        "track_accomplishment",
+        "get_project_status",
+        "update_milestone",
+        "update_task_status",
+        "add_context_note",
+        "log_agent_handoff",
+        "get_project_context",
+        "start_time_tracking",
+        "stop_time_tracking",
+        "update_project_time",
+        "get_time_analytics",
+        "get_agent_history"
+      ],
+      "disabled": false,
+      "timeout": 60,
+      "type": "stdio",
+      "command": "node",
+      "args": [
+        "ProjectMgr-Context/server.js"
+      ],
+      "env": {
+        "SUPABASE_URL": "https://oizusqvzslcstfhrrjsa.supabase.co",
+        "SUPABASE_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9penVzcXZ6c2xjc3RmaHJyanNhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTYwNDQzNzMsImV4cCI6MjA3MTYyMDM3M30._hECqDYM9picsYVURJqF_RMvJsd0ihuZcXF7fzcemm4"
+      }
+    },
+    "codebase-map": {
+      "autoApprove": [
+        "analyze_codebase",
+        "get_file_structure",
+        "search_code",
+        "get_dependencies",
+        "get_summary"
+      ],
+      "disabled": false,
+      "timeout": 60,
+      "type": "stdio",
+      "command": "mcp-codebase-map",
+      "args": [],
+      "env": {}
+    }
+  }
+}

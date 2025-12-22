@@ -1,0 +1,252 @@
+Phase 2: Create Migration Mapping Script
+Create a hook to migrate existing ProjectMgr-Context data:
+python# C:\Users\Bizzy\.claude\hooks\migrate-to-beads.py
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.11"
+# dependencies = ["supabase"]
+# ///
+
+import subprocess
+import json
+
+def migrate_project(project_data):
+    """Convert ProjectMgr-Context project to Beads issues."""
+    
+    # Create epic for the project
+    result = subprocess.run([
+        'bd', 'create', project_data['name'],
+        '--description', project_data['description'],
+        '-t', 'feature',
+        '-p', '1',
+        '--json'
+    ], capture_output=True, text=True)
+    epic_id = json.loads(result.stdout)['id']
+    
+    # Migrate requirements as child issues
+    for req in project_data.get('requirements', []):
+        subprocess.run([
+            'bd', 'create', req['title'],
+            '--description', req['description'],
+            '-p', str(req.get('priority', 2)),
+            '--deps', f'parent:{epic_id}',
+            '--json'
+        ])
+    
+    return epic_id
+Phase 3: Update PM Lead Agent
+Replace ProjectMgr-Context tools with Beads + GitHub:
+markdown# Updated pm-lead.md (key sections)
+---
+name: pm-lead
+description: Master project orchestrator using Beads for task tracking and GitHub Issues for milestones.
+tools: Task, Bash, Read, Write, Glob, 
+       mcp__sequential-thinking__sequentialthinking,
+       mcp__github__create_issue, mcp__github__list_issues,
+       mcp__github__create_milestone, mcp__github__update_issue,
+       mcp__desktop-commander__*
+---
+
+## PROJECT INITIALIZATION - BEADS WORKFLOW
+
+### Step 1: Initialize Beads
+```bash
+bd init
+bd quickstart  # Let agent understand the system
+```
+
+### Step 2: Create Project Epic
+```bash
+bd create "Project: ${PROJECT_NAME}" \
+  --description="${PRD_SUMMARY}" \
+  -t feature -p 1 --json
+```
+
+### Step 3: Create Milestone in GitHub (for external visibility)
+```javascript
+await mcp__github__create_milestone({
+  title: projectName,
+  description: prd.vision,
+  due_on: targetDate
+});
+```
+
+### Step 4: Generate Tasks from PRD
+```bash
+# For each requirement
+bd create "${requirement.title}" \
+  --description="${requirement.description}" \
+  -p ${priority} \
+  --deps parent:${epic_id} \
+  --json
+```
+Phase 4: Update Agent Handoff Protocol
+Replace log_agent_handoff() with Beads pattern:
+markdown## HANDOFF PROTOCOL (BEADS VERSION)
+
+### When Receiving Work
+```bash
+# 1. Check what's ready
+bd ready --json
+
+# 2. Claim the task
+bd update ${TASK_ID} --status in_progress --json
+
+# 3. Read the context
+bd show ${TASK_ID} --json
+```
+
+### When Completing Work
+```bash
+# 1. Close the task with summary
+bd close ${TASK_ID} --reason "Completed: ${summary}" --json
+
+# 2. File discovered issues
+bd create "Found: ${discovered_issue}" \
+  --description="${details}" \
+  -p 2 \
+  --deps discovered-from:${TASK_ID} \
+  --json
+
+# 3. Update next task for handoff
+bd update ${NEXT_TASK_ID} \
+  --add-note "Ready for ${next_agent}: ${handoff_context}" \
+  --json
+```
+
+### Sync at End of Session (CRITICAL)
+```bash
+bd sync  # Force export/commit/push
+```
+
+📋 Tool Mapping: ProjectMgr-Context → New System
+ProjectMgr-Context ToolReplacementNotescreate_projectbd create (epic) + GitHub milestoneBeads for tasks, GitHub for visibilitylist_projectsbd list --jsonFilter by epic tagsadd_requirementbd create --deps parent:Child issues under epictrack_accomplishmentbd close --reasonAccomplishment in close messageget_project_statusbd ready --json + bd stale --jsonReady = unblocked, Stale = forgottenupdate_milestonemcp__github__update_milestoneExternal visibilityupdate_task_statusbd update --statusin_progress, blocked, etc.add_context_notebd update --add-noteAppend notes to issuesget_project_contextbd show --jsonFull issue detailslog_agent_handoffbd create --deps discovered-from:Link new work to parentstart_time_trackingGit commit timestampImplicit from commitsstop_time_trackingbd close --reasonDuration from audit trailget_time_analyticsBeads audit trailParse timestamps from historyget_agent_historybd show --json (audit trail)Built-in audit log
+
+🔧 Updated MCP Configuration
+Replace your current MCP config:
+json// C:\Users\Bizzy\.claude\settings.json (MCP section)
+{
+  "mcpServers": {
+    "github": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-github"],
+      "env": {
+        "GITHUB_PERSONAL_ACCESS_TOKEN": "${GITHUB_TOKEN}"
+      }
+    },
+    "beads": {
+      "command": "beads-mcp"
+    },
+    "ccmem": {
+      "command": "npx",
+      "args": ["-y", "@adestefa/ccmem@latest"],
+      "description": "Architecture and settings memory"
+    }
+  }
+}
+Note: Beads recommends CLI + hooks over MCP for Claude Code (1-2k tokens vs 10-50k).
+
+📝 Updated .project-context Format
+Replace .project-context with Beads-compatible format:
+json// .beads/project-meta.json (auto-generated by bd init)
+{
+  "project_name": "project-name",
+  "epic_id": "bd-a3f8",
+  "github_repo": "bizzy211/project-name",
+  "github_milestone": 5,
+  "team": ["pm-lead", "frontend-dev", "backend-dev"],
+  "created": "2025-12-21T00:00:00Z"
+}
+
+🪝 Updated Hooks
+task-handoff.py (Beads version)
+python#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.11"
+# ///
+
+import json
+import sys
+import subprocess
+
+def main():
+    input_data = json.load(sys.stdin)
+    tool_name = input_data.get("tool_name", "")
+    tool_input = input_data.get("tool_input", {})
+    
+    if tool_name != "Task":
+        sys.exit(0)
+    
+    # Log handoff in Beads
+    from_agent = input_data.get("current_agent", "unknown")
+    to_agent = tool_input.get("agent", "unknown")
+    task_desc = tool_input.get("task", "")
+    
+    # Create discovered-from link
+    subprocess.run([
+        'bd', 'create', f'Handoff: {task_desc[:50]}',
+        '--description', f'From: {from_agent}\nTo: {to_agent}\nTask: {task_desc}',
+        '-t', 'task',
+        '-p', '2',
+        '--json'
+    ], capture_output=True)
+
+if __name__ == "__main__":
+    main()
+session-end-summary.py (Beads version)
+python#!/usr/bin/env -S uv run --script
+import subprocess
+
+def main():
+    # Sync all beads data to git
+    subprocess.run(['bd', 'sync'])
+    
+    # Show stale issues as reminder
+    result = subprocess.run(['bd', 'stale', '--days', '1', '--json'], 
+                           capture_output=True, text=True)
+    if result.stdout:
+        print("⚠️ Stale issues found - review before next session")
+
+if __name__ == "__main__":
+    main()
+
+🎯 Agent Update Checklist
+For each of your 26 agents, update the tools list:
+markdown# Remove (deprecated)
+mcp__projectmgr-context__*
+
+# Add (new)
+# Note: Prefer Bash with bd CLI for token efficiency
+# Only use MCP tools for MCP-only environments
+
+# In agent instructions, add:
+## BEADS WORKFLOW
+- Always run `bd ready --json` at start
+- Update task status: `bd update <id> --status in_progress`
+- Log discoveries: `bd create "Found: issue" --deps discovered-from:<current>`
+- Close tasks: `bd close <id> --reason "summary"`
+- Sync at end: `bd sync`
+
+📊 Comparison: Token Cost
+ApproachToken CostNotesProjectMgr-Context MCP~15-20k15 tools × 1k eachBeads MCP~10-50kFull MCP schemaBeads CLI (recommended)~1-2kJust CLI instructions in CLAUDE.mdGitHub Issues MCP~5-10kSelective tool loading
+Recommendation: Use Beads CLI + GitHub Issues MCP for optimal balance.
+
+🚀 Quick Start Migration
+powershell# 1. Backup current system
+Copy-Item -Recurse "C:\Users\Bizzy\.claude" "C:\Users\Bizzy\.claude.backup"
+
+# 2. Install new tools
+winget install steveyegge.beads
+claude mcp add github -s user -- npx -y @modelcontextprotocol/server-github
+
+# 3. Update agents.md with Beads workflow
+# (See updated workflow above)
+
+# 4. Update pm-lead.md 
+# (Remove ProjectMgr-Context, add Beads + GitHub)
+
+# 5. Test with a small project
+cd C:\Users\Bizzy\projects\test-project
+bd init
+bd create "Test Epic" -t feature -p 1 --json
+bd ready --json
