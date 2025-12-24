@@ -15,6 +15,8 @@ import { runDoctor } from './doctor.js';
 import { runUpdate } from './update.js';
 import { runSync } from './sync.js';
 import { createBeadsCommand } from './beads.js';
+import { createContextCommand } from './context.js';
+import { createMemoryCommand } from './memory.js';
 
 // Read version from package.json at runtime
 const VERSION = '1.0.2';
@@ -96,9 +98,11 @@ export function createProgram(): Command {
     .option('--beads', 'Initialize Beads in project')
     .option('--github', 'Create GitHub repository for new project')
     .option('--public', 'Make GitHub repository public (default: private)')
+    .option('-d, --description <description>', 'Project description for PRD generation')
     .action(async (name, options) => {
       const result = await runInitWizard({
         projectName: name,
+        projectDescription: options.description,
         global: options.global,
         skipPrerequisites: options.skipPrerequisites,
         skipGithub: options.skipGithub,
@@ -316,6 +320,14 @@ export function createProgram(): Command {
   // === BEADS COMMAND ===
   // Task management with agent assignment
   program.addCommand(createBeadsCommand());
+
+  // === CONTEXT COMMAND ===
+  // Context management for agent orchestration
+  program.addCommand(createContextCommand());
+
+  // === MEMORY COMMAND ===
+  // Heimdall persistent memory management
+  program.addCommand(createMemoryCommand());
 
   return program;
 }

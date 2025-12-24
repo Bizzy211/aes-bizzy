@@ -6,7 +6,7 @@
 /**
  * Available MCP server identifiers
  */
-export type MCPServerId = 'github' | 'task-master-ai' | 'context7' | 'sequential-thinking' | 'firecrawl' | 'desktop-commander' | 'beads-mcp' | 'supabase' | 'project-management-supabase' | 'n8n' | 'exa' | 'ref';
+export type MCPServerId = 'github' | 'task-master-ai' | 'context7' | 'sequential-thinking' | 'firecrawl' | 'desktop-commander' | 'beads-mcp' | 'supabase' | 'project-management-supabase' | 'n8n' | 'exa' | 'ref' | 'heimdall';
 /**
  * Transport type for MCP servers
  */

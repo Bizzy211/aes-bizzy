@@ -475,4 +475,107 @@ export async function clearAuthentication() {
         return false;
     }
 }
+/**
+ * Create a GitHub repository using the GitHub CLI
+ */
+export async function createGitHubRepo(options) {
+    const { name, description, public: isPublic = false, cwd, addRemote = true, push = false } = options;
+    logger.debug(`Creating GitHub repository: ${name}`);
+    try {
+        // Check if gh CLI is available
+        const ghCheck = await executeCommand('gh', ['--version'], { silent: true });
+        if (ghCheck.exitCode !== 0) {
+            return {
+                success: false,
+                error: 'GitHub CLI (gh) is not installed. Install it from https://cli.github.com/',
+            };
+        }
+        // Check if authenticated
+        const authCheck = await executeCommand('gh', ['auth', 'status'], { silent: true });
+        if (authCheck.exitCode !== 0) {
+            return {
+                success: false,
+                error: 'Not authenticated with GitHub CLI. Run: gh auth login',
+            };
+        }
+        // Build gh repo create arguments
+        const args = ['repo', 'create', name];
+        if (isPublic) {
+            args.push('--public');
+        }
+        else {
+            args.push('--private');
+        }
+        if (description) {
+            args.push('--description', description);
+        }
+        // If we're in a git repo, we can use --source to push existing code
+        if (cwd && addRemote) {
+            args.push('--source', cwd);
+            if (push) {
+                args.push('--push');
+            }
+            else {
+                args.push('--remote', 'origin');
+            }
+        }
+        logger.debug(`Running: gh ${args.join(' ')}`);
+        const result = await executeCommand('gh', args, {
+            cwd,
+            silent: false,
+        });
+        if (result.exitCode !== 0) {
+            // Parse common errors
+            const stderr = result.stderr || '';
+            if (stderr.includes('already exists')) {
+                return {
+                    success: false,
+                    error: `Repository "${name}" already exists on GitHub`,
+                };
+            }
+            if (stderr.includes('permission denied') || stderr.includes('403')) {
+                return {
+                    success: false,
+                    error: 'Permission denied. Check your GitHub token permissions.',
+                };
+            }
+            return {
+                success: false,
+                error: result.stderr || 'Failed to create repository',
+            };
+        }
+        // Extract URL from output
+        const output = result.stdout || result.stderr || '';
+        const urlMatch = output.match(/https:\/\/github\.com\/[^\s]+/);
+        const httpsUrl = urlMatch ? urlMatch[0] : undefined;
+        const sshUrl = httpsUrl ? httpsUrl.replace('https://github.com/', 'git@github.com:') + '.git' : undefined;
+        logger.info(`Created repository: ${httpsUrl || name}`);
+        return {
+            success: true,
+            url: httpsUrl,
+            httpsUrl,
+            sshUrl,
+        };
+    }
+    catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        logger.error(`Failed to create repository: ${message}`);
+        return {
+            success: false,
+            error: message,
+        };
+    }
+}
+/**
+ * Check if a GitHub repository exists
+ */
+export async function checkRepoExists(repoName) {
+    try {
+        const result = await executeCommand('gh', ['repo', 'view', repoName], { silent: true });
+        return result.exitCode === 0;
+    }
+    catch {
+        return false;
+    }
+}
 //# sourceMappingURL=github.js.map

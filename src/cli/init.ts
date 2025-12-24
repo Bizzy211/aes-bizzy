@@ -17,7 +17,7 @@ import { existsSync, mkdirSync } from 'node:fs';
 import { createLogger } from '../utils/logger.js';
 import { checkPrerequisites } from '../installers/prerequisites.js';
 import { installClaudeCode } from '../installers/claude-code.js';
-import { getStoredGitHubToken } from '../installers/github.js';
+import { getStoredGitHubToken, createGitHubRepo, isGitHubCLIAuthenticated } from '../installers/github.js';
 import { syncPrivateRepo } from '../sync/repo-sync.js';
 import {
   getAvailableMethods,
@@ -38,6 +38,7 @@ import {
   getRequiredCredentialsForServers,
   type Credentials,
 } from '../utils/env-claude.js';
+import { createKickoffContext } from '../utils/kickoff-context.js';
 import { executeCommand } from '../utils/shell.js';
 import type { PrerequisitesResult } from '../types/prerequisites.js';
 import type { GitHubAuthResult } from '../types/github.js';
@@ -61,6 +62,8 @@ function isTTY(): boolean {
 export interface InitOptions {
   /** Project name - if provided, creates new project directory */
   projectName?: string;
+  /** Project description for PRD generation and agent context */
+  projectDescription?: string;
   /** Use global/user-level config instead of project-level */
   global?: boolean;
   /** Skip individual steps */
@@ -108,7 +111,9 @@ interface WizardState {
   currentStep: number;
   totalSteps: number;
   projectPath: string;
+  projectName: string;
   isGlobal: boolean;
+  projectDescription?: string;
   prerequisites?: PrerequisitesResult;
   githubAuth?: GitHubAuthResult;
   credentials: Credentials;
@@ -117,6 +122,7 @@ interface WizardState {
   beadsMethod?: InstallMethod;
   taskMasterInstall?: { success: boolean; model?: TaskMasterModel; tier?: ToolTier };
   selectedMcpServers?: MCPServerId[];
+  githubRepoUrl?: string;
   startTime: number;
   cancelled: boolean;
 }
@@ -219,6 +225,81 @@ function showWelcomeBanner(): void {
 `;
 
   console.log(gradientString.pastel.multiline(title));
+}
+
+/**
+ * Step 0: Project description (for new projects)
+ * Collects a brief description to guide PRD generation and agent context
+ */
+async function stepProjectDescription(state: WizardState, options: InitOptions): Promise<boolean> {
+  // Only ask for description when creating a new project
+  if (!options.projectName) {
+    return true;
+  }
+
+  prompts.log.step('Project Description');
+
+  // Use pre-provided description if available
+  if (options.projectDescription) {
+    state.projectDescription = options.projectDescription;
+    prompts.log.success('Using provided project description');
+    return true;
+  }
+
+  if (options.nonInteractive || !isTTY()) {
+    prompts.log.info('Skipping project description (non-interactive mode)');
+    return true;
+  }
+
+  try {
+    const description = await prompts.text({
+      message: 'Describe your project (what are you building?):',
+      placeholder: 'e.g., A web app for tracking fitness goals with social features',
+      validate: (value) => {
+        if (!value || value.trim().length === 0) {
+          return undefined; // Allow empty (will be skipped)
+        }
+        if (value.trim().length < 10) {
+          return 'Please provide a more detailed description (at least 10 characters)';
+        }
+        return undefined;
+      },
+    });
+
+    if (prompts.isCancel(description)) {
+      return false;
+    }
+
+    if (description && description.trim().length > 0) {
+      state.projectDescription = description.trim();
+      prompts.log.success('Project description captured');
+
+      // Optionally ask for more context
+      const addDetails = await prompts.confirm({
+        message: 'Would you like to add more details about features or requirements?',
+        initialValue: false,
+      });
+
+      if (!prompts.isCancel(addDetails) && addDetails) {
+        const details = await prompts.text({
+          message: 'Additional details:',
+          placeholder: 'Key features, tech preferences, target users...',
+        });
+
+        if (!prompts.isCancel(details) && details) {
+          state.projectDescription += '\n\n' + details.trim();
+        }
+      }
+    } else {
+      prompts.log.info('No description provided (you can add one later)');
+    }
+
+    return true;
+  } catch (error) {
+    logger.error(`Project description error: ${error instanceof Error ? error.message : String(error)}`);
+    prompts.log.warn('Continuing without project description');
+    return true;
+  }
 }
 
 /**
@@ -787,6 +868,79 @@ async function stepGitignore(state: WizardState, options: InitOptions): Promise<
 }
 
 /**
+ * Step 7b: GitHub repository creation (for new projects)
+ */
+async function stepGitHubRepo(state: WizardState, options: InitOptions): Promise<boolean> {
+  // Only offer for new projects
+  if (!options.projectName) {
+    return true;
+  }
+
+  // Check if --github flag was passed or if we should ask
+  let createRepo = options.github;
+
+  if (createRepo === undefined && !options.nonInteractive && isTTY()) {
+    // Check if gh CLI is authenticated
+    const ghAuthenticated = await isGitHubCLIAuthenticated();
+
+    if (ghAuthenticated) {
+      prompts.log.step('GitHub Repository');
+
+      const confirm = await prompts.confirm({
+        message: 'Would you like to create a GitHub repository for this project?',
+        initialValue: true,
+      });
+
+      if (prompts.isCancel(confirm)) {
+        return false;
+      }
+
+      createRepo = confirm;
+    } else {
+      prompts.log.info('Skipping GitHub repo creation (gh CLI not authenticated)');
+      return true;
+    }
+  }
+
+  if (!createRepo) {
+    return true;
+  }
+
+  try {
+    spinner = ora('Creating GitHub repository...').start();
+
+    // Build description from project description or default
+    const description = state.projectDescription
+      ? (state.projectDescription.split('\n')[0] ?? '').substring(0, 200) // First line, max 200 chars
+      : `Created with JHC Agentic EcoSystem - Bizzy`;
+
+    const result = await createGitHubRepo({
+      name: state.projectName,
+      description,
+      public: options.public ?? false,
+      cwd: state.projectPath,
+      addRemote: true,
+      push: true,
+    });
+
+    if (result.success) {
+      state.githubRepoUrl = result.url;
+      spinner.succeed(`GitHub repository created: ${result.url}`);
+    } else {
+      spinner.fail(`Failed to create GitHub repository: ${result.error}`);
+      prompts.log.info('You can create a repository later with: gh repo create');
+    }
+
+    return true;
+  } catch (error) {
+    if (spinner) spinner.fail('GitHub repository creation failed');
+    logger.error(`GitHub repo error: ${error instanceof Error ? error.message : String(error)}`);
+    prompts.log.warn('You can create a repository later with: gh repo create');
+    return true;
+  }
+}
+
+/**
  * Step 8: Summary
  */
 async function stepSummary(state: WizardState, options: InitOptions): Promise<boolean> {
@@ -800,7 +954,15 @@ async function stepSummary(state: WizardState, options: InitOptions): Promise<bo
   console.log('Summary:');
   console.log('--------');
   console.log(`  Mode: ${state.isGlobal ? 'Global (~/.claude)' : 'Project-level'}`);
+  console.log(`  Project: ${state.projectName}`);
   console.log(`  Location: ${state.projectPath}`);
+
+  if (state.projectDescription) {
+    const truncated = state.projectDescription.length > 60
+      ? state.projectDescription.substring(0, 57) + '...'
+      : state.projectDescription;
+    console.log(`  Description: ${truncated}`);
+  }
 
   if (state.prerequisites) {
     console.log('  Prerequisites: All critical tools installed');
@@ -826,8 +988,32 @@ async function stepSummary(state: WizardState, options: InitOptions): Promise<bo
     console.log('  Task Master: Installed');
   }
 
+  if (state.githubRepoUrl) {
+    console.log(`  GitHub: ${state.githubRepoUrl}`);
+  }
+
   console.log(`  Duration: ${duration}s`);
   console.log('');
+
+  // Kickoff status for new projects
+  if (options.projectName && state.projectDescription) {
+    console.log('Kickoff Context:');
+    console.log('----------------');
+    console.log('  \u2705 Kickoff context created (.claude/KICKOFF.md)');
+    console.log('  \u2705 Project description captured');
+
+    if (state.githubRepoUrl) {
+      console.log('  \u2705 GitHub repository linked');
+    }
+
+    console.log('');
+    console.log('  pm-lead agent will:');
+    console.log('    1. Research project domain using Exa & Ref');
+    console.log('    2. Generate comprehensive PRD');
+    console.log('    3. Create tasks with Task Master');
+    console.log('    4. Orchestrate specialized agents');
+    console.log('');
+  }
 
   // Next steps
   const nextSteps: string[] = [];
@@ -840,7 +1026,11 @@ async function stepSummary(state: WizardState, options: InitOptions): Promise<bo
     nextSteps.push('# Add any missing credentials to .env.claude');
   }
 
-  nextSteps.push('claude    # Start Claude Code');
+  if (options.projectName && state.projectDescription) {
+    nextSteps.push('claude    # Claude will start kickoff workflow automatically');
+  } else {
+    nextSteps.push('claude    # Start Claude Code');
+  }
 
   prompts.note(nextSteps.join('\n'), 'Next Steps');
 
@@ -877,6 +1067,7 @@ export async function runInitWizard(options: InitOptions = {}): Promise<{
     currentStep: 0,
     totalSteps,
     projectPath,
+    projectName,
     isGlobal,
     credentials: {},
     startTime: Date.now(),
@@ -899,6 +1090,15 @@ export async function runInitWizard(options: InitOptions = {}): Promise<{
       const structureResult = await createProjectStructure(projectPath, projectName, options);
       if (!structureResult.success) {
         prompts.log.error(`Failed to create project structure: ${structureResult.error}`);
+        return { success: false, state: wizardState };
+      }
+    }
+
+    // Step 0 (optional): Project description for new projects
+    if (options.projectName) {
+      const descResult = await stepProjectDescription(wizardState, options);
+      if (!descResult) {
+        prompts.outro('Setup cancelled.');
         return { success: false, state: wizardState };
       }
     }
@@ -959,6 +1159,36 @@ export async function runInitWizard(options: InitOptions = {}): Promise<{
     if (!isGlobal) {
       wizardState.currentStep = 7;
       await stepGitignore(wizardState, options);
+
+      // Step 7b: GitHub repo creation (for new projects only, after git init)
+      if (options.projectName) {
+        const repoResult = await stepGitHubRepo(wizardState, options);
+        if (!repoResult) {
+          prompts.outro('Setup cancelled.');
+          return { success: false, state: wizardState };
+        }
+      }
+
+      // Step 7c: Create kickoff context for pm-lead (new projects only)
+      if (options.projectName && wizardState.projectDescription) {
+        spinner = ora('Creating kickoff context...').start();
+
+        const kickoffResult = await createKickoffContext({
+          projectName: wizardState.projectName,
+          projectPath: wizardState.projectPath,
+          projectDescription: wizardState.projectDescription,
+          githubUrl: wizardState.githubRepoUrl,
+          hasTaskMaster: wizardState.taskMasterInstall?.success ?? false,
+          hasBeads: wizardState.beadsInstall?.success ?? false,
+          mcpServers: wizardState.selectedMcpServers ?? [],
+        });
+
+        if (kickoffResult.success) {
+          spinner.succeed('Kickoff context created for pm-lead agent');
+        } else {
+          spinner.warn(`Kickoff context not created: ${kickoffResult.error}`);
+        }
+      }
     }
 
     // Step 8: Summary
@@ -966,6 +1196,36 @@ export async function runInitWizard(options: InitOptions = {}): Promise<{
     await stepSummary(wizardState, options);
 
     prompts.outro('Setup complete!');
+
+    // Offer to launch Claude Code for new projects with kickoff context
+    if (options.projectName && wizardState.projectDescription && !options.nonInteractive && isTTY()) {
+      console.log('');
+      const launchClaude = await prompts.confirm({
+        message: 'Would you like to launch Claude Code to start the kickoff workflow?',
+        initialValue: true,
+      });
+
+      if (!prompts.isCancel(launchClaude) && launchClaude) {
+        console.log('');
+        prompts.log.info('Launching Claude Code with pm-lead agent...');
+        prompts.log.info('Claude will use the kickoff context to research and generate a PRD.');
+        console.log('');
+
+        // Launch claude with a prompt to start the kickoff workflow
+        const claudeResult = await executeCommand('claude', [
+          '-p',
+          'Read the kickoff context from .claude/KICKOFF.md and start the project workflow: 1) Research the project domain using Exa and Ref, 2) Generate a comprehensive PRD, 3) Parse it with Task Master to create tasks.',
+        ], {
+          cwd: wizardState.projectPath,
+          silent: false,
+          // Don't capture output - let it run interactively
+        });
+
+        if (claudeResult.exitCode !== 0) {
+          prompts.log.warn('Claude Code exited with an error. You can start manually: claude');
+        }
+      }
+    }
 
     return { success: true, state: wizardState };
   } catch (error) {

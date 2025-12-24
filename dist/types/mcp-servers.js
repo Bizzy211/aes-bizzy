@@ -201,6 +201,23 @@ export const MCP_SERVERS = [
         envVars: [],
         estimatedTokenCost: '~500 tokens/lookup',
     },
+    {
+        id: 'heimdall',
+        name: 'Heimdall Memory',
+        description: 'Persistent vector memory for agents using Qdrant - enables semantic search and context retrieval across sessions',
+        package: '@anthropic/heimdall-mcp',
+        recommended: true,
+        category: 'productivity',
+        envVars: [
+            {
+                name: 'OpenAI API Key',
+                description: 'API key for text embeddings (text-embedding-3-small)',
+                required: true,
+                envKey: 'OPENAI_API_KEY',
+            },
+        ],
+        estimatedTokenCost: '~100 tokens/memory + embedding cost',
+    },
 ];
 /**
  * Get server configuration by ID

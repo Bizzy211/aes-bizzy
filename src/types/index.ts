@@ -18,3 +18,6 @@ export * from './detection.js';
 export * from './github-automation.js';
 export * from './beads.js';
 export * from './agent-registry.js';
+export * from './handoff-data.js';
+export * from './context.js';
+export * from './heimdall.js';

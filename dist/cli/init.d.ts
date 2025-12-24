@@ -20,6 +20,8 @@ import type { SyncResult } from '../types/repo-sync.js';
 export interface InitOptions {
     /** Project name - if provided, creates new project directory */
     projectName?: string;
+    /** Project description for PRD generation and agent context */
+    projectDescription?: string;
     /** Use global/user-level config instead of project-level */
     global?: boolean;
     /** Skip individual steps */
@@ -66,7 +68,9 @@ interface WizardState {
     currentStep: number;
     totalSteps: number;
     projectPath: string;
+    projectName: string;
     isGlobal: boolean;
+    projectDescription?: string;
     prerequisites?: PrerequisitesResult;
     githubAuth?: GitHubAuthResult;
     credentials: Credentials;
@@ -79,6 +83,7 @@ interface WizardState {
         tier?: ToolTier;
     };
     selectedMcpServers?: MCPServerId[];
+    githubRepoUrl?: string;
     startTime: number;
     cancelled: boolean;
 }
