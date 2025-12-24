@@ -235,35 +235,38 @@ case "$MODE_NAME" in
         # No API calls - validate structure only
         log_info "Running structural validation tests..."
 
-        run_test_suite "TypeScript Build Check" "npm run typecheck" && ((TESTS_PASSED++)) || ((TESTS_FAILED++))
-        run_test_suite "Component Validation" "npm run test:components" && ((TESTS_PASSED++)) || ((TESTS_FAILED++))
-        run_test_suite "Hook Tests (mocked)" "npm run test:hooks" && ((TESTS_PASSED++)) || ((TESTS_FAILED++))
-        run_test_suite "Unit Tests" "npm run test:run -- --reporter=verbose" && ((TESTS_PASSED++)) || ((TESTS_FAILED++))
+        # Note: Using || true after ((++)) to prevent set -e exit when counter is 0
+        run_test_suite "TypeScript Build Check" "npm run typecheck" && { ((++TESTS_PASSED)) || true; } || { ((++TESTS_FAILED)) || true; }
+        run_test_suite "Component Validation" "npm run test:components" && { ((++TESTS_PASSED)) || true; } || { ((++TESTS_FAILED)) || true; }
+        # Use python3 directly instead of npm script (which uses Windows 'py' command)
+        run_test_suite "Hook Tests (mocked)" "cd tests/hooks && python3 -m pytest -v" && { ((++TESTS_PASSED)) || true; } || { ((++TESTS_FAILED)) || true; }
+        # Run unit tests excluding e2e/smoke tests (which require API keys)
+        run_test_suite "Unit Tests" "npm run test:run -- --reporter=verbose --exclude='tests/e2e/smoke/**'" && { ((++TESTS_PASSED)) || true; } || { ((++TESTS_FAILED)) || true; }
         ;;
 
     "smoke")
         # Minimal API calls - quick validation
         log_info "Running smoke tests with minimal API calls..."
 
-        run_test_suite "Structural Tests" "$0 --structural" && ((TESTS_PASSED++)) || ((TESTS_FAILED++))
-        run_test_suite "API Connectivity" "npm run test:run -- tests/e2e/smoke/" && ((TESTS_PASSED++)) || ((TESTS_FAILED++))
+        run_test_suite "Structural Tests" "$0 --structural" && { ((++TESTS_PASSED)) || true; } || { ((++TESTS_FAILED)) || true; }
+        run_test_suite "API Connectivity" "npm run test:run -- tests/e2e/smoke/" && { ((++TESTS_PASSED)) || true; } || { ((++TESTS_FAILED)) || true; }
         ;;
 
     "integration")
         # Full API integration tests
         log_info "Running integration tests with full API access..."
 
-        run_test_suite "Smoke Tests" "$0 --smoke" && ((TESTS_PASSED++)) || ((TESTS_FAILED++))
-        run_test_suite "Beads Integration" "npm run test:run -- tests/e2e/integration/beads.test.ts" && ((TESTS_PASSED++)) || ((TESTS_FAILED++))
-        run_test_suite "Task Master Integration" "npm run test:run -- tests/e2e/integration/taskmaster.test.ts" && ((TESTS_PASSED++)) || ((TESTS_FAILED++))
-        run_test_suite "Agent Spawning" "npm run test:run -- tests/e2e/integration/agents.test.ts" && ((TESTS_PASSED++)) || ((TESTS_FAILED++))
+        run_test_suite "Smoke Tests" "$0 --smoke" && { ((++TESTS_PASSED)) || true; } || { ((++TESTS_FAILED)) || true; }
+        run_test_suite "Beads Integration" "npm run test:run -- tests/e2e/integration/beads.test.ts" && { ((++TESTS_PASSED)) || true; } || { ((++TESTS_FAILED)) || true; }
+        run_test_suite "Task Master Integration" "npm run test:run -- tests/e2e/integration/taskmaster.test.ts" && { ((++TESTS_PASSED)) || true; } || { ((++TESTS_FAILED)) || true; }
+        run_test_suite "Agent Spawning" "npm run test:run -- tests/e2e/integration/agents.test.ts" && { ((++TESTS_PASSED)) || true; } || { ((++TESTS_FAILED)) || true; }
 
         if [[ -n "$GITHUB_TOKEN" ]]; then
-            run_test_suite "GitHub Integration" "npm run test:run -- tests/e2e/integration/github.test.ts" && ((TESTS_PASSED++)) || ((TESTS_FAILED++))
+            run_test_suite "GitHub Integration" "npm run test:run -- tests/e2e/integration/github.test.ts" && { ((++TESTS_PASSED)) || true; } || { ((++TESTS_FAILED)) || true; }
         fi
 
         if [[ -n "$QDRANT_URL" ]]; then
-            run_test_suite "Heimdall Integration" "npm run test:run -- tests/e2e/integration/heimdall.test.ts" && ((TESTS_PASSED++)) || ((TESTS_FAILED++))
+            run_test_suite "Heimdall Integration" "npm run test:run -- tests/e2e/integration/heimdall.test.ts" && { ((++TESTS_PASSED)) || true; } || { ((++TESTS_FAILED)) || true; }
         fi
         ;;
 
@@ -271,9 +274,9 @@ case "$MODE_NAME" in
         # Complete test suite
         log_info "Running complete test suite..."
 
-        run_test_suite "Integration Tests" "$0 --integration" && ((TESTS_PASSED++)) || ((TESTS_FAILED++))
-        run_test_suite "E2E Workflows" "npm run test:run -- tests/e2e/workflows/" && ((TESTS_PASSED++)) || ((TESTS_FAILED++))
-        run_test_suite "Performance Tests" "npm run test:run -- tests/e2e/performance/" && ((TESTS_PASSED++)) || ((TESTS_FAILED++))
+        run_test_suite "Integration Tests" "$0 --integration" && { ((++TESTS_PASSED)) || true; } || { ((++TESTS_FAILED)) || true; }
+        run_test_suite "E2E Workflows" "npm run test:run -- tests/e2e/workflows/" && { ((++TESTS_PASSED)) || true; } || { ((++TESTS_FAILED)) || true; }
+        run_test_suite "Performance Tests" "npm run test:run -- tests/e2e/performance/" && { ((++TESTS_PASSED)) || true; } || { ((++TESTS_FAILED)) || true; }
         ;;
 
     *)

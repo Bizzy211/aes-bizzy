@@ -44,7 +44,8 @@ describe('MCP_SERVERS configuration', () => {
       expect(server.id).toBeDefined();
       expect(server.name).toBeDefined();
       expect(server.description).toBeDefined();
-      expect(server.package).toBeDefined();
+      // Servers use either 'package' (stdio transport) or 'url' (http transport)
+      expect(server.package || server.url).toBeDefined();
       expect(server.category).toBeDefined();
       expect(server.envVars).toBeDefined();
     });
@@ -63,7 +64,16 @@ describe('getMCPServerConfig', () => {
     const config = getMCPServerConfig('github');
     expect(config).toBeDefined();
     expect(config?.name).toBe('GitHub MCP');
-    expect(config?.package).toBe('@modelcontextprotocol/server-github');
+    // GitHub MCP uses HTTP transport, so it has url instead of package
+    expect(config?.transport).toBe('http');
+    expect(config?.url).toBeDefined();
+  });
+
+  it('returns config for stdio transport server', () => {
+    const config = getMCPServerConfig('context7');
+    expect(config).toBeDefined();
+    expect(config?.name).toBe('Context7');
+    expect(config?.package).toBe('@upstash/context7-mcp');
   });
 
   it('returns undefined for invalid server', () => {

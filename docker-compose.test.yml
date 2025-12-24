@@ -88,10 +88,12 @@ services:
     volumes:
       - qdrant-test-data:/qdrant/storage
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:6333/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+      # Check if Qdrant port is listening using /proc/net/tcp
+      # 0x18BD = 6333 in hex
+      test: ["CMD-SHELL", "grep -q ':18BD' /proc/net/tcp || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
       start_period: 10s
     networks:
       - test-network
