@@ -267,7 +267,7 @@ describe('Init Wizard', () => {
         skipMcp: true,
       });
 
-      expect(result.state.currentStep).toBe(7);
+      expect(result.state.currentStep).toBe(8);
       expect(result.state.cancelled).toBe(false);
     });
 

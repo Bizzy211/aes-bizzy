@@ -16,9 +16,15 @@ export type MCPServerId =
   | 'desktop-commander'
   | 'beads-mcp'
   | 'supabase'
+  | 'project-management-supabase'
   | 'n8n'
   | 'exa'
   | 'ref';
+
+/**
+ * Transport type for MCP servers
+ */
+export type MCPTransport = 'stdio' | 'http';
 
 /**
  * Environment variable requirement
@@ -31,13 +37,28 @@ export interface EnvVarRequirement {
 }
 
 /**
+ * HTTP header configuration for HTTP transport
+ */
+export interface MCPHttpHeader {
+  name: string;
+  valueTemplate: string; // e.g., "Bearer ${GITHUB_TOKEN}"
+}
+
+/**
  * MCP server configuration
  */
 export interface MCPServerConfig {
   id: MCPServerId;
   name: string;
   description: string;
-  package: string;
+  /** Package name for stdio transport (npx -y <package>) */
+  package?: string;
+  /** Transport type: 'stdio' (default) or 'http' */
+  transport?: MCPTransport;
+  /** URL for HTTP transport */
+  url?: string;
+  /** HTTP headers for HTTP transport (supports variable substitution) */
+  headers?: MCPHttpHeader[];
   recommended?: boolean;
   envVars: EnvVarRequirement[];
   estimatedTokenCost?: string; // e.g., "~1000 tokens/day"
@@ -91,7 +112,14 @@ export const MCP_SERVERS: MCPServerConfig[] = [
     id: 'github',
     name: 'GitHub MCP',
     description: 'GitHub integration for repository management and PR workflows',
-    package: '@modelcontextprotocol/server-github',
+    transport: 'http',
+    url: 'https://api.githubcopilot.com/mcp/',
+    headers: [
+      {
+        name: 'Authorization',
+        valueTemplate: 'Bearer ${GITHUB_TOKEN}',
+      },
+    ],
     recommended: true,
     category: 'essential',
     envVars: [
@@ -200,6 +228,29 @@ export const MCP_SERVERS: MCPServerConfig[] = [
       },
     ],
     estimatedTokenCost: '~300 tokens/query',
+  },
+  {
+    id: 'project-management-supabase',
+    name: 'Project Management (Supabase)',
+    description: 'Real-time project tracking with milestones, requirements, and team notifications',
+    package: 'project-management-supabase',
+    recommended: true,
+    category: 'productivity',
+    envVars: [
+      {
+        name: 'Supabase URL',
+        description: 'Supabase project URL for project management database',
+        required: true,
+        envKey: 'SUPABASE_URL',
+      },
+      {
+        name: 'Supabase Key',
+        description: 'Supabase service role key',
+        required: true,
+        envKey: 'SUPABASE_KEY',
+      },
+    ],
+    estimatedTokenCost: '~400 tokens/operation',
   },
   {
     id: 'n8n',

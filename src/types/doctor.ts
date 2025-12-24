@@ -5,7 +5,7 @@
 /**
  * Check status levels
  */
-export type CheckStatus = 'ok' | 'warn' | 'error';
+export type CheckStatus = 'ok' | 'warn' | 'error' | 'info';
 
 /**
  * Diagnostic categories
@@ -53,6 +53,7 @@ export interface DiagnosticReport {
     ok: number;
     warn: number;
     error: number;
+    info: number;
   };
   overallStatus: CheckStatus;
 }
@@ -108,6 +109,7 @@ export const STATUS_EMOJI: Record<CheckStatus, string> = {
   ok: '✅',
   warn: '⚠️',
   error: '❌',
+  info: 'ℹ️',
 };
 
 /**

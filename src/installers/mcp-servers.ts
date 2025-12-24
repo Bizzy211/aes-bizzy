@@ -14,6 +14,7 @@ import type {
   InstallationSummary,
   MCPInstallOptions,
   GenericMCPServerStatus,
+  MCPHttpHeader,
 } from '../types/mcp-servers.js';
 import { MCP_SERVERS, getMCPServerConfig, getRecommendedServers } from '../types/mcp-servers.js';
 
@@ -101,6 +102,84 @@ export function buildEnvArgs(
 }
 
 /**
+ * Resolve header value template with environment variables
+ * e.g., "Bearer ${GITHUB_TOKEN}" -> "Bearer ghp_xxxxx"
+ */
+export function resolveHeaderValue(
+  template: string,
+  customEnvVars?: Record<string, string>
+): string {
+  return template.replace(/\$\{([^}]+)\}/g, (_, envKey) => {
+    return customEnvVars?.[envKey] || process.env[envKey] || '';
+  });
+}
+
+/**
+ * Build HTTP header arguments for MCP add command
+ * Returns array of ['-H', 'HeaderName: HeaderValue'] pairs
+ */
+export function buildHttpHeaderArgs(
+  headers: MCPHttpHeader[],
+  customEnvVars?: Record<string, string>
+): string[] {
+  const headerArgs: string[] = [];
+
+  for (const header of headers) {
+    const value = resolveHeaderValue(header.valueTemplate, customEnvVars);
+    if (value) {
+      headerArgs.push('-H', `${header.name}: ${value}`);
+    }
+  }
+
+  return headerArgs;
+}
+
+/**
+ * Build command arguments for installing an MCP server
+ * Handles both stdio (npx) and http transport types
+ */
+export function buildInstallArgs(
+  config: MCPServerConfig,
+  customEnvVars?: Record<string, string>
+): string[] {
+  const transport = config.transport || 'stdio';
+
+  if (transport === 'http') {
+    // HTTP transport: claude mcp add --transport http <name> <url> [-H "Header: Value"]
+    if (!config.url) {
+      throw new Error(`HTTP transport requires url for server ${config.id}`);
+    }
+
+    const args = ['mcp', 'add', '--transport', 'http', config.id, config.url, '-s', 'user'];
+
+    // Add HTTP headers
+    if (config.headers && config.headers.length > 0) {
+      const headerArgs = buildHttpHeaderArgs(config.headers, customEnvVars);
+      args.push(...headerArgs);
+    }
+
+    return args;
+  }
+
+  // Default: stdio transport with npx
+  // claude mcp add <server-name> -s user [-e KEY=VALUE...] -- npx -y <package>
+  if (!config.package) {
+    throw new Error(`stdio transport requires package for server ${config.id}`);
+  }
+
+  const args = ['mcp', 'add', config.id, '-s', 'user'];
+
+  // Add environment variable arguments
+  const envArgsList = buildEnvArgs(config.id, customEnvVars);
+  args.push(...envArgsList);
+
+  // Add npx command
+  args.push('--', 'npx', '-y', config.package);
+
+  return args;
+}
+
+/**
  * Install a single MCP server
  */
 export async function installMCPServer(
@@ -135,19 +214,21 @@ export async function installMCPServer(
     };
   }
 
-  // Build command arguments
-  // claude mcp add <server-name> -s user [-e KEY=VALUE...] -- npx -y <package>
-  const args = ['mcp', 'add', serverId, '-s', 'user'];
-
-  // Add environment variable arguments
-  const envArgsList = buildEnvArgs(serverId, envVars);
-  args.push(...envArgsList);
-
-  // Add npx command
-  args.push('--', 'npx', '-y', config.package);
+  // Build command arguments based on transport type
+  let args: string[];
+  try {
+    args = buildInstallArgs(config, envVars);
+  } catch (error) {
+    return {
+      serverId,
+      success: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
 
   try {
-    logger.debug(`Installing ${config.name}...`);
+    const transport = config.transport || 'stdio';
+    logger.debug(`Installing ${config.name} (${transport} transport)...`);
 
     let result;
     if (showSpinner) {

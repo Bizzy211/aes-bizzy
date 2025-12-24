@@ -1,9 +1,13 @@
 /**
  * Tests for Agent Capability Mapping System
+ *
+ * NOTE: Tests that require agent files are skipped when development
+ * files are not available (e.g., in npm package).
  */
 
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import * as path from 'node:path';
+import * as fs from 'node:fs';
 import {
   loadAgentCapabilities,
   getAgentCapability,
@@ -14,6 +18,13 @@ import {
   LABEL_SPECIALIZATION_MAP,
 } from '../../src/integrations/github-automation/agent-capabilities.js';
 
+// Check for agents directory in possible locations
+const PROJECT_ROOT = path.resolve(process.cwd());
+const AGENTS_DIR = fs.existsSync(path.join(PROJECT_ROOT, '.development', 'agents'))
+  ? path.join(PROJECT_ROOT, '.development', 'agents')
+  : path.join(PROJECT_ROOT, 'Claude Files', 'agents');
+const AGENTS_AVAILABLE = fs.existsSync(AGENTS_DIR);
+
 describe('Agent Capabilities', () => {
   beforeEach(() => {
     // Clear cache before each test
@@ -21,27 +32,22 @@ describe('Agent Capabilities', () => {
   });
 
   describe('loadAgentCapabilities', () => {
-    it('should load capabilities from agents directory', async () => {
-      const agentsDir = path.join(process.cwd(), 'Claude Files', 'agents');
-      const capabilities = await loadAgentCapabilities(agentsDir);
+    it.skipIf(!AGENTS_AVAILABLE)('should load capabilities from agents directory', async () => {
+      const capabilities = await loadAgentCapabilities(AGENTS_DIR);
 
       expect(capabilities.size).toBeGreaterThan(0);
     });
 
-    it('should cache capabilities on subsequent calls', async () => {
-      const agentsDir = path.join(process.cwd(), 'Claude Files', 'agents');
-
-      const first = await loadAgentCapabilities(agentsDir);
-      const second = await loadAgentCapabilities(agentsDir);
+    it.skipIf(!AGENTS_AVAILABLE)('should cache capabilities on subsequent calls', async () => {
+      const first = await loadAgentCapabilities(AGENTS_DIR);
+      const second = await loadAgentCapabilities(AGENTS_DIR);
 
       expect(first).toBe(second); // Same reference (cached)
     });
 
-    it('should force reload when requested', async () => {
-      const agentsDir = path.join(process.cwd(), 'Claude Files', 'agents');
-
-      const first = await loadAgentCapabilities(agentsDir);
-      const second = await loadAgentCapabilities(agentsDir, true);
+    it.skipIf(!AGENTS_AVAILABLE)('should force reload when requested', async () => {
+      const first = await loadAgentCapabilities(AGENTS_DIR);
+      const second = await loadAgentCapabilities(AGENTS_DIR, true);
 
       expect(first.size).toBe(second.size);
     });
@@ -52,10 +58,9 @@ describe('Agent Capabilities', () => {
     });
   });
 
-  describe('getAgentCapability', () => {
+  describe.skipIf(!AGENTS_AVAILABLE)('getAgentCapability', () => {
     it('should return capability for existing agent', async () => {
-      const agentsDir = path.join(process.cwd(), 'Claude Files', 'agents');
-      const capability = await getAgentCapability('frontend-dev', agentsDir);
+      const capability = await getAgentCapability('frontend-dev', AGENTS_DIR);
 
       expect(capability).not.toBeNull();
       expect(capability?.name).toBe('frontend-dev');
@@ -63,25 +68,22 @@ describe('Agent Capabilities', () => {
     });
 
     it('should return null for non-existent agent', async () => {
-      const agentsDir = path.join(process.cwd(), 'Claude Files', 'agents');
-      const capability = await getAgentCapability('non-existent-agent', agentsDir);
+      const capability = await getAgentCapability('non-existent-agent', AGENTS_DIR);
 
       expect(capability).toBeNull();
     });
   });
 
-  describe('findAgentsByKeywords', () => {
+  describe.skipIf(!AGENTS_AVAILABLE)('findAgentsByKeywords', () => {
     it('should find agents matching keywords', async () => {
-      const agentsDir = path.join(process.cwd(), 'Claude Files', 'agents');
-      const scores = await findAgentsByKeywords(['react', 'frontend', 'ui'], agentsDir);
+      const scores = await findAgentsByKeywords(['react', 'frontend', 'ui'], AGENTS_DIR);
 
       expect(scores.size).toBeGreaterThan(0);
       expect(scores.has('frontend-dev')).toBe(true);
     });
 
     it('should return higher scores for more keyword matches', async () => {
-      const agentsDir = path.join(process.cwd(), 'Claude Files', 'agents');
-      const scores = await findAgentsByKeywords(['security', 'authentication', 'encryption'], agentsDir);
+      const scores = await findAgentsByKeywords(['security', 'authentication', 'encryption'], AGENTS_DIR);
 
       // Security expert should have high score
       if (scores.has('security-expert')) {
@@ -91,34 +93,30 @@ describe('Agent Capabilities', () => {
     });
 
     it('should return empty map for no matches', async () => {
-      const agentsDir = path.join(process.cwd(), 'Claude Files', 'agents');
-      const scores = await findAgentsByKeywords(['xyznonexistent123'], agentsDir);
+      const scores = await findAgentsByKeywords(['xyznonexistent123'], AGENTS_DIR);
 
       expect(scores.size).toBe(0);
     });
   });
 
-  describe('findAgentsBySpecialization', () => {
+  describe.skipIf(!AGENTS_AVAILABLE)('findAgentsBySpecialization', () => {
     it('should find agents by specialization', async () => {
-      const agentsDir = path.join(process.cwd(), 'Claude Files', 'agents');
-      const agents = await findAgentsBySpecialization('frontend', agentsDir);
+      const agents = await findAgentsBySpecialization('frontend', AGENTS_DIR);
 
       expect(agents.length).toBeGreaterThan(0);
       expect(agents.some((a) => a.name === 'frontend-dev')).toBe(true);
     });
 
     it('should return empty array for unknown specialization', async () => {
-      const agentsDir = path.join(process.cwd(), 'Claude Files', 'agents');
-      const agents = await findAgentsBySpecialization('xyznonexistent', agentsDir);
+      const agents = await findAgentsBySpecialization('xyznonexistent', AGENTS_DIR);
 
       expect(agents.length).toBe(0);
     });
   });
 
-  describe('getAvailableAgents', () => {
+  describe.skipIf(!AGENTS_AVAILABLE)('getAvailableAgents', () => {
     it('should return list of agent names', async () => {
-      const agentsDir = path.join(process.cwd(), 'Claude Files', 'agents');
-      const agents = await getAvailableAgents(agentsDir);
+      const agents = await getAvailableAgents(AGENTS_DIR);
 
       expect(agents.length).toBeGreaterThan(0);
       expect(agents).toContain('frontend-dev');

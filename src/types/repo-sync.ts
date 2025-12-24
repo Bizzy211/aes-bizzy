@@ -74,6 +74,8 @@ export interface RepoSyncOptions {
   manifestTier?: ManifestTier;
   /** Categories to filter from manifest */
   categories?: ComponentCategory[];
+  /** Target path for sync (defaults to ~/.claude) */
+  targetPath?: string;
 }
 
 /**

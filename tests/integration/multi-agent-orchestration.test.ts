@@ -12,10 +12,13 @@
  * - Agent exclusion and conflict handling
  * - Load balancing across agents
  * - Error recovery and resilience
+ *
+ * NOTE: Tests are skipped when development agent files are not available.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as path from 'node:path';
+import * as fs from 'node:fs';
 import type {
   GitHubIssue,
   AgentMatch,
@@ -250,8 +253,15 @@ function canStartTask(
   return dependencies.every((dep) => completedTasks.has(dep));
 }
 
-describe('Multi-Agent Orchestration', () => {
-  const agentsDir = path.join(process.cwd(), 'Claude Files', 'agents');
+// Check for agents directory in possible locations
+const PROJECT_ROOT = path.resolve(process.cwd());
+const AGENTS_DIR = fs.existsSync(path.join(PROJECT_ROOT, '.development', 'agents'))
+  ? path.join(PROJECT_ROOT, '.development', 'agents')
+  : path.join(PROJECT_ROOT, 'Claude Files', 'agents');
+const AGENTS_AVAILABLE = fs.existsSync(AGENTS_DIR);
+
+describe.skipIf(!AGENTS_AVAILABLE)('Multi-Agent Orchestration', () => {
+  const agentsDir = AGENTS_DIR;
   const testOwner = 'test-owner';
   const testRepo = 'test-repo';
   const testToken = 'ghp_test_token_12345';

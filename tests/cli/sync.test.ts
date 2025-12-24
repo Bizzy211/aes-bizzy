@@ -3,9 +3,9 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import * as fs from 'node:fs';
+import * as fs from 'fs';
 import * as path from 'node:path';
-import * as os from 'node:os';
+import * as os from 'os';
 
 // Mock dependencies before imports
 vi.mock('../../src/utils/logger.js', () => ({
@@ -18,10 +18,10 @@ vi.mock('../../src/utils/logger.js', () => ({
   }),
 }));
 
-vi.mock('node:fs', async () => {
+// Mock 'fs' module (not 'node:fs') since sync.ts uses `import fs from 'fs'`
+vi.mock('fs', async () => {
   const actual = await vi.importActual('node:fs');
-  return {
-    ...actual,
+  const mocks = {
     existsSync: vi.fn(),
     readFileSync: vi.fn(),
     writeFileSync: vi.fn(),
@@ -30,9 +30,18 @@ vi.mock('node:fs', async () => {
     readdirSync: vi.fn(),
     statSync: vi.fn(),
   };
+  return {
+    ...actual,
+    ...mocks,
+    default: {
+      ...actual,
+      ...mocks,
+    },
+  };
 });
 
-vi.mock('node:os', async (importOriginal) => {
+// Mock 'os' module (not 'node:os') since sync.ts uses `import os from 'os'`
+vi.mock('os', async (importOriginal) => {
   const actual = await importOriginal() as typeof import('node:os');
   return {
     ...actual,
@@ -159,10 +168,8 @@ describe('Sync Command', () => {
       });
 
       it('should load and use essential manifest', async () => {
-        vi.mocked(fs.existsSync).mockImplementation((p: unknown) => {
-          const pathStr = String(p);
-          return pathStr.includes('essential.json') || pathStr.includes('claude-subagents');
-        });
+        // Return true for all paths - we're testing logic, not actual file operations
+        vi.mocked(fs.existsSync).mockReturnValue(true);
 
         vi.mocked(fs.readFileSync).mockImplementation((filePath: unknown) => {
           const pathStr = String(filePath);
@@ -190,6 +197,10 @@ describe('Sync Command', () => {
                 estimatedSetupTime: '5 minutes',
               },
             });
+          }
+          // Return valid JSON for ecosystem.json
+          if (pathStr.includes('ecosystem.json')) {
+            return JSON.stringify({ version: '1.0.0' });
           }
           return 'file content';
         });
@@ -236,6 +247,10 @@ describe('Sync Command', () => {
               },
             });
           }
+          // Return valid JSON for ecosystem.json
+          if (pathStr.includes('ecosystem.json')) {
+            return JSON.stringify({ version: '1.0.0' });
+          }
           return 'file content';
         });
 
@@ -275,7 +290,11 @@ describe('Sync Command', () => {
               },
             });
           }
-          return 'content';
+          // Return existing content for destination file to test update logic
+          if (pathStr.includes('ecosystem.json')) {
+            return JSON.stringify({ version: '0.9.0' });
+          }
+          return 'source content';
         });
 
         vi.mocked(fs.mkdirSync).mockReturnValue(undefined);
@@ -318,7 +337,11 @@ describe('Sync Command', () => {
               },
             });
           }
-          return 'content';
+          // Return valid JSON for ecosystem.json (read during sync)
+          if (pathStr.includes('ecosystem.json')) {
+            return JSON.stringify({ version: '1.0.0' });
+          }
+          return 'source content';
         });
 
         const result = await runSync({ manifest: 'essential', dryRun: true });
@@ -355,6 +378,10 @@ describe('Sync Command', () => {
                 estimatedSetupTime: '5 minutes',
               },
             });
+          }
+          // Return valid JSON for ecosystem.json (read during sync)
+          if (pathStr.includes('ecosystem.json')) {
+            return JSON.stringify({ version: '0.9.0' });
           }
           return 'existing content';
         });
@@ -401,6 +428,10 @@ describe('Sync Command', () => {
               estimatedSetupTime: '15 minutes',
             },
           });
+        }
+        // Return valid JSON for ecosystem.json
+        if (pathStr.includes('ecosystem.json')) {
+          return JSON.stringify({ version: '1.0.0' });
         }
         return 'content';
       });
@@ -453,6 +484,10 @@ describe('Sync Command', () => {
               estimatedSetupTime: '5 minutes',
             },
           });
+        }
+        // Return valid JSON for ecosystem.json
+        if (pathStr.includes('ecosystem.json')) {
+          return JSON.stringify({ version: '1.0.0' });
         }
         return 'content';
       });

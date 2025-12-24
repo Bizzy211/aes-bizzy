@@ -8,6 +8,7 @@ export const STATUS_EMOJI = {
     ok: '✅',
     warn: '⚠️',
     error: '❌',
+    info: 'ℹ️',
 };
 /**
  * Category labels

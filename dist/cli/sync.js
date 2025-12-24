@@ -24,12 +24,19 @@ function getClaudeFilesPath() {
 }
 /**
  * Get the target directory for sync
+ * Default: Project-level (.claude in cwd)
+ * --global: User-level (~/.claude)
+ * --project <path>: Specific project path
  */
-function getTargetPath(projectPath) {
-    if (projectPath) {
-        return path.join(projectPath, '.claude');
+function getTargetPath(options) {
+    if (options.project) {
+        return path.join(options.project, '.claude');
     }
-    return path.join(os.homedir(), '.claude');
+    if (options.global) {
+        return path.join(os.homedir(), '.claude');
+    }
+    // Default: project-level in current directory
+    return path.join(process.cwd(), '.claude');
 }
 /**
  * Load a manifest file
@@ -156,10 +163,10 @@ async function restoreFromBackup(timestamp) {
 /**
  * Check for available updates
  */
-async function checkForUpdates(manifest) {
+async function checkForUpdates(manifest, options) {
     logger.info(chalk.cyan('Checking for updates...\n'));
     const claudeFiles = getClaudeFilesPath();
-    const targetPath = getTargetPath();
+    const targetPath = getTargetPath({ global: options?.global });
     // Load manifest if specified
     let manifestData = null;
     if (manifest) {
@@ -270,7 +277,7 @@ export async function runSync(options) {
     }
     // Handle check option
     if (options.check) {
-        await checkForUpdates(options.manifest);
+        await checkForUpdates(options.manifest, { global: options.global });
         return {
             success: true,
             filesUpdated: 0,
@@ -293,7 +300,7 @@ export async function runSync(options) {
         displayManifestSummary(manifest);
     }
     const claudeFiles = getClaudeFilesPath();
-    const targetPath = getTargetPath(options.project);
+    const targetPath = getTargetPath({ project: options.project, global: options.global });
     // Ensure target directory exists
     if (!fs.existsSync(targetPath)) {
         fs.mkdirSync(targetPath, { recursive: true });

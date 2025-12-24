@@ -256,8 +256,12 @@ async function installBeadsBinary(silent: boolean): Promise<{ exitCode: number; 
   });
 }
 
+// Standard Windows installation path
+const BEADS_INSTALL_DIR_WINDOWS = 'C:\\Program Files\\Beads\\bin';
+
 /**
  * Install Beads via binary download on Windows using PowerShell
+ * Installs to C:\Program Files\Beads\bin (requires elevation)
  */
 async function installBeadsBinaryWindows(silent: boolean): Promise<{ exitCode: number; stderr: string; stdout: string }> {
   // First, try to get the latest release info from GitHub
@@ -279,14 +283,14 @@ async function installBeadsBinaryWindows(silent: boolean): Promise<{ exitCode: n
     downloadUrl = 'https://github.com/steveyegge/beads/releases/download/v0.34.0/beads_0.34.0_windows_amd64.zip';
   }
 
-  // PowerShell script to download and install Beads
+  // PowerShell script to download and install Beads (with elevation for Program Files)
   const psScript = `
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 $url = '${downloadUrl}'
 $zipPath = "$env:TEMP\\beads.zip"
 $extractPath = "$env:TEMP\\beads_extract"
-$targetDir = "$env:LOCALAPPDATA\\Programs\\beads"
+$targetDir = '${BEADS_INSTALL_DIR_WINDOWS}'
 
 Write-Host 'Downloading Beads binary...'
 Invoke-WebRequest -Uri $url -OutFile $zipPath -UseBasicParsing
@@ -305,14 +309,14 @@ Write-Host 'Cleaning up...'
 Remove-Item $zipPath -Force
 Remove-Item $extractPath -Recurse -Force
 
-# Add to PATH if not already there
-$userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
-if ($userPath -notlike "*$targetDir*") {
-    [Environment]::SetEnvironmentVariable('Path', "$userPath;$targetDir", 'User')
-    Write-Host "Added $targetDir to user PATH"
+# Add to system PATH if not already there (requires elevation)
+$machinePath = [Environment]::GetEnvironmentVariable('Path', 'Machine')
+if ($machinePath -notlike "*$targetDir*") {
+    [Environment]::SetEnvironmentVariable('Path', "$machinePath;$targetDir", 'Machine')
+    Write-Host "Added $targetDir to system PATH"
 }
 
-Write-Host "Done! Beads installed to: $targetDir"
+Write-Host "Done! Beads installed to: $targetDir\\bd.exe"
 & "$targetDir\\bd.exe" --version
 `;
 
@@ -378,15 +382,22 @@ export async function installBeads(options: InstallerOptions = {}): Promise<Inst
 }
 
 /**
+ * Get the Windows Beads executable path
+ */
+function getWindowsBeadsPath(): string {
+  return `${BEADS_INSTALL_DIR_WINDOWS}\\bd.exe`;
+}
+
+/**
  * Get the installed Beads version
  */
 export async function getBeadsVersion(): Promise<string | null> {
   // First try the standard 'bd' command in PATH
   let result = await executeCommand('bd', ['version'], { silent: true });
 
-  // On Windows, also check the binary installation path
+  // On Windows, also check the standard installation path
   if (result.exitCode !== 0 && isWindows()) {
-    const beadsPath = `${process.env['LOCALAPPDATA']}\\Programs\\beads\\bd.exe`;
+    const beadsPath = getWindowsBeadsPath();
     result = await executeCommand(beadsPath, ['--version'], { silent: true });
   }
 
@@ -407,9 +418,9 @@ export async function isBeadsInstalled(): Promise<boolean> {
   const inPath = await checkCommandExists('bd');
   if (inPath) return true;
 
-  // On Windows, also check the binary installation path
+  // On Windows, also check the standard installation path
   if (isWindows()) {
-    const beadsPath = `${process.env['LOCALAPPDATA']}\\Programs\\beads\\bd.exe`;
+    const beadsPath = getWindowsBeadsPath();
     const result = await executeCommand(beadsPath, ['--version'], { silent: true });
     return result.exitCode === 0;
   }
@@ -481,8 +492,8 @@ export async function getBeadsConfig(): Promise<BeadsConfig> {
   let method: InstallMethod | undefined;
 
   if (isWindows()) {
-    // Check if installed via binary download (our preferred method)
-    const beadsPath = `${process.env['LOCALAPPDATA']}\\Programs\\beads\\bd.exe`;
+    // Check if installed via binary download to Program Files (our preferred method)
+    const beadsPath = getWindowsBeadsPath();
     const binaryResult = await executeCommand(beadsPath, ['--version'], { silent: true });
     if (binaryResult.exitCode === 0) {
       method = 'binary';

@@ -1,9 +1,13 @@
 /**
  * Tests for Label-to-Agent Mapping System
+ *
+ * NOTE: Tests that require agent files are skipped when development
+ * files are not available (e.g., in npm package).
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
 import * as path from 'node:path';
+import * as fs from 'node:fs';
 import {
   getAllLabelMappings,
   getAgentsForLabel,
@@ -23,8 +27,15 @@ import {
 } from '../../src/integrations/github-automation/label-mapping.js';
 import { invalidateCapabilityCache } from '../../src/integrations/github-automation/agent-capabilities.js';
 
+// Check for agents directory in possible locations
+const PROJECT_ROOT = path.resolve(process.cwd());
+const AGENTS_DIR = fs.existsSync(path.join(PROJECT_ROOT, '.development', 'agents'))
+  ? path.join(PROJECT_ROOT, '.development', 'agents')
+  : path.join(PROJECT_ROOT, 'Claude Files', 'agents');
+const AGENTS_AVAILABLE = fs.existsSync(AGENTS_DIR);
+
 describe('Label Mapping', () => {
-  const agentsDir = path.join(process.cwd(), 'Claude Files', 'agents');
+  const agentsDir = AGENTS_DIR;
 
   beforeEach(() => {
     clearCustomMappings();
@@ -197,7 +208,7 @@ describe('Label Mapping', () => {
     });
   });
 
-  describe('validateMappings', () => {
+  describe.skipIf(!AGENTS_AVAILABLE)('validateMappings', () => {
     it('should validate mappings with existing agents', async () => {
       const mappings = [
         { label: 'test', agents: ['frontend-dev'], priority: 1 },
@@ -221,7 +232,7 @@ describe('Label Mapping', () => {
     });
   });
 
-  describe('suggestMappingsForLabel', () => {
+  describe.skipIf(!AGENTS_AVAILABLE)('suggestMappingsForLabel', () => {
     it('should suggest agents for frontend label', async () => {
       const suggestions = await suggestMappingsForLabel('frontend', agentsDir);
 
@@ -241,7 +252,7 @@ describe('Label Mapping', () => {
     });
   });
 
-  describe('getBestAgentForLabels', () => {
+  describe.skipIf(!AGENTS_AVAILABLE)('getBestAgentForLabels', () => {
     it('should return best agent for labels', async () => {
       const best = await getBestAgentForLabels(['frontend', 'ui'], agentsDir);
 

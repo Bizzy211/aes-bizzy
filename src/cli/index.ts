@@ -13,7 +13,6 @@ import { createLogger, setLogLevel, setSilentMode } from '../utils/logger.js';
 import { runInitWizard } from './init.js';
 import { runDoctor } from './doctor.js';
 import { runUpdate } from './update.js';
-import { runProject } from './project.js';
 import { runSync } from './sync.js';
 import { createBeadsCommand } from './beads.js';
 
@@ -71,8 +70,9 @@ export function createProgram(): Command {
 
   // === INIT COMMAND ===
   program
-    .command('init')
-    .description('Initialize Claude Code development environment with 8-step wizard')
+    .command('init [name]')
+    .description('Initialize Claude Code development environment (project-level by default)')
+    .option('-g, --global', 'Use global ~/.claude config (legacy behavior)')
     .option('--skip-prerequisites', 'Skip prerequisites check')
     .option('--skip-github', 'Skip GitHub authentication')
     .option('--skip-api-keys', 'Skip API keys configuration')
@@ -80,6 +80,7 @@ export function createProgram(): Command {
     .option('--skip-beads', 'Skip Beads installation')
     .option('--skip-taskmaster', 'Skip Task Master installation')
     .option('--skip-mcp', 'Skip MCP servers configuration')
+    .option('--skip-git', 'Skip git repository initialization')
     .option('-y, --yes', 'Accept all defaults without prompting')
     .option('--force', 'Force operations even on errors')
     .option('--no-backup', 'Skip automatic backup before sync')
@@ -87,12 +88,18 @@ export function createProgram(): Command {
     .option('--taskmaster-model <model>', 'TaskMaster AI model (e.g., claude-sonnet-4-20250514)')
     .option('--non-interactive', 'Run in non-interactive mode (auto-select defaults)')
     .option('--github-token <token>', 'GitHub personal access token')
-    .option('--exa-key <key>', 'Exa.ai API key')
-    .option('--ref-key <key>', 'Ref.tools API key')
     .option('--anthropic-key <key>', 'Anthropic API key')
     .option('--perplexity-key <key>', 'Perplexity API key')
-    .action(async (options) => {
+    .option('--supabase-url <url>', 'Supabase project URL')
+    .option('--supabase-key <key>', 'Supabase service role key')
+    .option('--taskmaster', 'Initialize Task Master in project')
+    .option('--beads', 'Initialize Beads in project')
+    .option('--github', 'Create GitHub repository for new project')
+    .option('--public', 'Make GitHub repository public (default: private)')
+    .action(async (name, options) => {
       const result = await runInitWizard({
+        projectName: name,
+        global: options.global,
         skipPrerequisites: options.skipPrerequisites,
         skipGithub: options.skipGithub,
         skipApiKeys: options.skipApiKeys,
@@ -100,6 +107,7 @@ export function createProgram(): Command {
         skipBeads: options.skipBeads,
         skipTaskmaster: options.skipTaskmaster,
         skipMcp: options.skipMcp,
+        skipGit: options.skipGit,
         yes: options.yes,
         force: options.force,
         noBackup: options.noBackup,
@@ -107,10 +115,14 @@ export function createProgram(): Command {
         taskmasterModel: options.taskmasterModel,
         nonInteractive: options.nonInteractive,
         githubToken: options.githubToken,
-        exaApiKey: options.exaKey,
-        refApiKey: options.refKey,
         anthropicApiKey: options.anthropicKey,
         perplexityApiKey: options.perplexityKey,
+        supabaseUrl: options.supabaseUrl,
+        supabaseKey: options.supabaseKey,
+        taskmaster: options.taskmaster,
+        beads: options.beads,
+        github: options.github,
+        public: options.public,
       });
 
       if (!result.success) {
@@ -176,9 +188,10 @@ export function createProgram(): Command {
   // === SYNC COMMAND ===
   program
     .command('sync')
-    .description('Sync ecosystem components using installation manifests')
+    .description('Sync ecosystem components (project-level by default)')
     .option('-m, --manifest <name>', 'Select installation manifest (essential, recommended, full)')
-    .option('-p, --project <path>', 'Sync to project directory instead of global ~/.claude')
+    .option('-p, --project <path>', 'Sync to specific project directory')
+    .option('-g, --global', 'Sync to global ~/.claude instead of project')
     .option('-c, --check', 'Check for updates without syncing')
     .option('-r, --restore <timestamp>', 'Restore from a backup by timestamp')
     .option('--dry-run', 'Show what would be synced without making changes')
@@ -188,6 +201,7 @@ export function createProgram(): Command {
       const result = await runSync({
         manifest: options.manifest,
         project: options.project,
+        global: options.global,
         check: options.check,
         restore: options.restore,
         dryRun: options.dryRun,
@@ -200,10 +214,10 @@ export function createProgram(): Command {
       }
     });
 
-  // === PROJECT COMMAND ===
+  // === PROJECT COMMAND (DEPRECATED - redirects to init) ===
   program
     .command('project <name>')
-    .description('Create a new project with Claude ecosystem integration')
+    .description('[DEPRECATED] Use "aes-bizzy init <name>" instead')
     .option('-t, --template <template>', 'Project template (basic, web, api, fullstack)', 'basic')
     .option('--github', 'Create GitHub repository')
     .option('--public', 'Make GitHub repository public (default: private)')
@@ -213,15 +227,18 @@ export function createProgram(): Command {
     .option('--force', 'Overwrite existing files')
     .option('--dry-run', 'Show what would be created without making changes')
     .action(async (name, options) => {
-      const result = await runProject(name, {
-        template: options.template,
+      logger.warn('The "project" command is deprecated. Use "aes-bizzy init <name>" instead.');
+      console.log('');
+
+      // Forward to init with project name
+      const result = await runInitWizard({
+        projectName: name,
         github: options.github,
         public: options.public,
         taskmaster: options.taskmaster,
         beads: options.beads,
         skipGit: options.skipGit,
         force: options.force,
-        dryRun: options.dryRun,
       });
 
       if (!result.success) {

@@ -3,10 +3,14 @@
  *
  * Comprehensive test suite for GitHub issue detection, listing,
  * agent matching, triage, and CLI command integration.
+ *
+ * NOTE: Tests that require agent files are skipped when development
+ * files are not available (e.g., in npm package).
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as path from 'node:path';
+import * as fs from 'node:fs';
 
 // Mock dependencies
 vi.mock('../../src/utils/logger.js', () => ({
@@ -69,10 +73,20 @@ import type {
 } from '../../src/types/github-automation.js';
 
 // ============================================================================
+// Check for agents directory availability
+// ============================================================================
+
+const PROJECT_ROOT = path.resolve(process.cwd());
+const AGENTS_DIR = fs.existsSync(path.join(PROJECT_ROOT, '.development', 'agents'))
+  ? path.join(PROJECT_ROOT, '.development', 'agents')
+  : path.join(PROJECT_ROOT, 'Claude Files', 'agents');
+const AGENTS_AVAILABLE = fs.existsSync(AGENTS_DIR);
+
+// ============================================================================
 // Test Fixtures and Helper Functions
 // ============================================================================
 
-const agentsDir = path.join(process.cwd(), 'Claude Files', 'agents');
+const agentsDir = AGENTS_DIR;
 
 /**
  * Create a mock GitHub issue for testing
@@ -345,7 +359,7 @@ describe('GitHub Issues Integration Tests', () => {
   // Agent Capability Tests
   // ==========================================================================
 
-  describe('Agent Capability Tests', () => {
+  describe.skipIf(!AGENTS_AVAILABLE)('Agent Capability Tests', () => {
     it('should load agent capabilities from agents directory', async () => {
       const capabilities = await loadAgentCapabilities(agentsDir);
 
@@ -381,7 +395,7 @@ describe('GitHub Issues Integration Tests', () => {
   // Issue Analysis Tests
   // ==========================================================================
 
-  describe('Issue Analysis Tests', () => {
+  describe.skipIf(!AGENTS_AVAILABLE)('Issue Analysis Tests', () => {
     it('should analyze frontend issue and find matching agents', async () => {
       const analysis = await analyzeIssue(SAMPLE_ISSUES.frontend, agentsDir);
 
@@ -452,7 +466,7 @@ describe('GitHub Issues Integration Tests', () => {
   // Agent Matching Tests
   // ==========================================================================
 
-  describe('Agent Matching Tests', () => {
+  describe.skipIf(!AGENTS_AVAILABLE)('Agent Matching Tests', () => {
     it('should get best match for frontend issue', async () => {
       const best = await getBestMatch(SAMPLE_ISSUES.frontend, 10, agentsDir);
 
@@ -549,7 +563,7 @@ describe('GitHub Issues Integration Tests', () => {
   // Triage Tests
   // ==========================================================================
 
-  describe('Triage Tests', () => {
+  describe.skipIf(!AGENTS_AVAILABLE)('Triage Tests', () => {
     it('should triage frontend issue', async () => {
       const result = await triageIssue(SAMPLE_ISSUES.frontend, agentsDir);
 
@@ -626,7 +640,7 @@ describe('GitHub Issues Integration Tests', () => {
   // Agent Match Validation Tests
   // ==========================================================================
 
-  describe('Agent Match Validation Tests', () => {
+  describe.skipIf(!AGENTS_AVAILABLE)('Agent Match Validation Tests', () => {
     it('should validate AgentMatch structure', async () => {
       const analysis = await analyzeIssue(SAMPLE_ISSUES.frontend, agentsDir);
 
@@ -674,7 +688,7 @@ describe('GitHub Issues Integration Tests', () => {
   // TriageResult Validation Tests
   // ==========================================================================
 
-  describe('TriageResult Validation Tests', () => {
+  describe.skipIf(!AGENTS_AVAILABLE)('TriageResult Validation Tests', () => {
     it('should validate TriageResult structure', async () => {
       const result = await triageIssue(SAMPLE_ISSUES.backend, agentsDir);
 
@@ -709,7 +723,7 @@ describe('GitHub Issues Integration Tests', () => {
   // Batch Processing Tests
   // ==========================================================================
 
-  describe('Batch Processing Tests', () => {
+  describe.skipIf(!AGENTS_AVAILABLE)('Batch Processing Tests', () => {
     it('should analyze multiple issues', async () => {
       const issues = [
         SAMPLE_ISSUES.frontend,
@@ -757,7 +771,7 @@ describe('GitHub Issues Integration Tests', () => {
   // Edge Case Tests
   // ==========================================================================
 
-  describe('Edge Case Tests', () => {
+  describe.skipIf(!AGENTS_AVAILABLE)('Edge Case Tests', () => {
     it('should handle issue with no labels', async () => {
       const unlabeledIssue = createMockIssue(
         200,
@@ -847,7 +861,7 @@ describe('GitHub Issues Integration Tests', () => {
   // Performance Tests
   // ==========================================================================
 
-  describe('Performance Tests', () => {
+  describe.skipIf(!AGENTS_AVAILABLE)('Performance Tests', () => {
     it('should analyze issue within reasonable time', async () => {
       const start = Date.now();
       await analyzeIssue(SAMPLE_ISSUES.frontend, agentsDir);
@@ -889,7 +903,7 @@ describe('GitHub Issues Integration Tests', () => {
   // Expected Agent Matching Tests (Task 27 Specific)
   // ==========================================================================
 
-  describe('Expected Agent Matching Tests', () => {
+  describe.skipIf(!AGENTS_AVAILABLE)('Expected Agent Matching Tests', () => {
     it('should match frontend-dev to frontend issue', async () => {
       const analysis = await analyzeIssue(SAMPLE_ISSUES.frontend, agentsDir);
 

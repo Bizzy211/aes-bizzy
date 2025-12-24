@@ -1,14 +1,22 @@
 /**
  * Tests for manifest validation and structure
+ *
+ * NOTE: These tests validate manifest files in the development directory.
+ * They are skipped if the development files are not present (e.g., in npm package).
  */
 
 import { describe, it, expect } from 'vitest';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
-// Get the project root
+// Get the project root - check both possible locations
 const PROJECT_ROOT = path.resolve(process.cwd());
-const MANIFESTS_DIR = path.join(PROJECT_ROOT, 'claude-subagents', 'manifests');
+const MANIFESTS_DIR = fs.existsSync(path.join(PROJECT_ROOT, '.development', 'manifests'))
+  ? path.join(PROJECT_ROOT, '.development', 'manifests')
+  : path.join(PROJECT_ROOT, 'claude-subagents', 'manifests');
+
+// Skip all tests if manifests directory doesn't exist (e.g., in npm package)
+const MANIFESTS_AVAILABLE = fs.existsSync(MANIFESTS_DIR);
 
 interface ManifestComponent {
   path?: string;
@@ -41,7 +49,7 @@ interface Manifest {
   };
 }
 
-describe('Installation Manifests', () => {
+describe.skipIf(!MANIFESTS_AVAILABLE)('Installation Manifests', () => {
   const manifestFiles = ['essential.json', 'recommended.json', 'full.json'];
 
   describe.each(manifestFiles)('%s manifest', (manifestFile) => {
@@ -361,7 +369,7 @@ describe('Installation Manifests', () => {
   });
 });
 
-describe('Agent Index', () => {
+describe.skipIf(!MANIFESTS_AVAILABLE)('Agent Index', () => {
   const agentIndexPath = path.join(MANIFESTS_DIR, 'agent-index.json');
 
   interface AgentIndex {

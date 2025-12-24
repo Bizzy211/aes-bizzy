@@ -111,46 +111,126 @@ async function checkClaudeCode() {
     };
 }
 /**
- * Check GitHub CLI authentication
+ * Check GitHub MCP server installation
  */
-async function checkGitHubAuth() {
-    const result = runCommand('gh auth status');
+async function checkGitHubMcp() {
+    const result = runCommand('claude mcp list');
     if (!result.success) {
         return {
-            name: 'GitHub Auth',
+            name: 'GitHub MCP',
             category: 'github',
-            status: 'error',
-            message: 'Not authenticated with GitHub',
-            fixCommand: 'gh auth login',
-            fixDescription: 'Authenticate with GitHub CLI',
+            status: 'warn',
+            message: 'Could not check MCP servers',
+            details: 'Run: claude mcp list',
+        };
+    }
+    // Check if github server is in the list
+    const hasGitHubMcp = result.output.toLowerCase().includes('github');
+    if (!hasGitHubMcp) {
+        return {
+            name: 'GitHub MCP',
+            category: 'github',
+            status: 'warn',
+            message: 'GitHub MCP not installed',
+            details: 'Provides native GitHub integration',
+            fixCommand: 'aes-bizzy init --skip-prerequisites',
+            fixDescription: 'Run init wizard to configure GitHub MCP',
         };
     }
     return {
-        name: 'GitHub Auth',
+        name: 'GitHub MCP',
         category: 'github',
         status: 'ok',
-        message: 'Authenticated',
+        message: 'Installed',
     };
 }
 /**
- * Check GitHub token scopes
+ * Check stored GitHub token
  */
-async function checkGitHubTokenScopes() {
-    const result = runCommand('gh api user');
-    if (!result.success) {
+async function checkGitHubToken() {
+    const tokenPath = path.join(homedir(), '.claude', 'github_token');
+    if (!existsSync(tokenPath)) {
+        // Check gh CLI as fallback
+        const ghResult = runCommand('gh auth status');
+        if (ghResult.success) {
+            return {
+                name: 'GitHub Token',
+                category: 'github',
+                status: 'ok',
+                message: 'Using gh CLI authentication',
+                details: 'gh auth is available as fallback',
+            };
+        }
         return {
             name: 'GitHub Token',
             category: 'github',
             status: 'warn',
-            message: 'Could not verify token scopes',
-            details: 'Token may have limited permissions',
+            message: 'No GitHub token configured',
+            details: 'Needed for GitHub MCP and repository sync',
+            fixCommand: 'aes-bizzy init --skip-prerequisites',
+            fixDescription: 'Run init to configure GitHub access',
+        };
+    }
+    // Token file exists - validate it
+    try {
+        const { readFileSync } = await import('node:fs');
+        const token = readFileSync(tokenPath, 'utf-8').trim();
+        if (!token || token.length < 10) {
+            return {
+                name: 'GitHub Token',
+                category: 'github',
+                status: 'warn',
+                message: 'Invalid token in github_token file',
+                fixCommand: 'aes-bizzy init --skip-prerequisites',
+                fixDescription: 'Re-run init to configure GitHub token',
+            };
+        }
+        return {
+            name: 'GitHub Token',
+            category: 'github',
+            status: 'ok',
+            message: 'Token configured',
+        };
+    }
+    catch {
+        return {
+            name: 'GitHub Token',
+            category: 'github',
+            status: 'warn',
+            message: 'Could not read token file',
+        };
+    }
+}
+/**
+ * Check GitHub CLI (optional - fallback only)
+ */
+async function checkGitHubCli() {
+    const result = runCommand('gh --version');
+    if (!result.success) {
+        return {
+            name: 'GitHub CLI',
+            category: 'github',
+            status: 'info',
+            message: 'Not installed (optional)',
+            details: 'GitHub MCP is preferred for integration',
+        };
+    }
+    // Check if authenticated
+    const authResult = runCommand('gh auth status');
+    if (!authResult.success) {
+        return {
+            name: 'GitHub CLI',
+            category: 'github',
+            status: 'ok',
+            message: 'Installed but not authenticated',
+            details: 'Can be used as fallback for GitHub operations',
         };
     }
     return {
-        name: 'GitHub Token',
+        name: 'GitHub CLI',
         category: 'github',
         status: 'ok',
-        message: 'Token valid with user access',
+        message: 'Installed and authenticated',
     };
 }
 /**
@@ -371,7 +451,7 @@ function getCategoryChecks() {
         {
             category: 'github',
             label: CATEGORY_LABELS.github,
-            checks: [checkGitHubAuth, checkGitHubTokenScopes],
+            checks: [checkGitHubMcp, checkGitHubToken, checkGitHubCli],
         },
         {
             category: 'ecosystem',
@@ -450,6 +530,7 @@ export async function runDiagnostics(options = {}) {
         ok: allChecks.filter((c) => c.status === 'ok').length,
         warn: allChecks.filter((c) => c.status === 'warn').length,
         error: allChecks.filter((c) => c.status === 'error').length,
+        info: allChecks.filter((c) => c.status === 'info').length,
     };
     let overallStatus = 'ok';
     if (summary.error > 0)
@@ -521,7 +602,14 @@ export function printReport(report) {
     // Summary
     const { summary } = report;
     console.log('─'.repeat(40));
-    console.log(`Summary: ${summary.ok} ok, ${summary.warn} warnings, ${summary.error} errors`);
+    const parts = [`${summary.ok} ok`];
+    if (summary.info > 0)
+        parts.push(`${summary.info} info`);
+    if (summary.warn > 0)
+        parts.push(`${summary.warn} warnings`);
+    if (summary.error > 0)
+        parts.push(`${summary.error} errors`);
+    console.log(`Summary: ${parts.join(', ')}`);
     console.log(`Duration: ${report.duration}ms`);
 }
 /**

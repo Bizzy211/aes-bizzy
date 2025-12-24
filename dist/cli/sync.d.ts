@@ -14,6 +14,8 @@ export interface SyncOptions {
     dryRun?: boolean;
     force?: boolean;
     verbose?: boolean;
+    /** Use global ~/.claude instead of project-level .claude/ */
+    global?: boolean;
 }
 /**
  * Sync command result

@@ -56,6 +56,8 @@ export interface SyncOptions {
   dryRun?: boolean;
   force?: boolean;
   verbose?: boolean;
+  /** Use global ~/.claude instead of project-level .claude/ */
+  global?: boolean;
 }
 
 /**
@@ -85,12 +87,19 @@ function getClaudeFilesPath(): string {
 
 /**
  * Get the target directory for sync
+ * Default: Project-level (.claude in cwd)
+ * --global: User-level (~/.claude)
+ * --project <path>: Specific project path
  */
-function getTargetPath(projectPath?: string): string {
-  if (projectPath) {
-    return path.join(projectPath, '.claude');
+function getTargetPath(options: { project?: string; global?: boolean }): string {
+  if (options.project) {
+    return path.join(options.project, '.claude');
   }
-  return path.join(os.homedir(), '.claude');
+  if (options.global) {
+    return path.join(os.homedir(), '.claude');
+  }
+  // Default: project-level in current directory
+  return path.join(process.cwd(), '.claude');
 }
 
 /**
@@ -235,11 +244,11 @@ async function restoreFromBackup(timestamp: string): Promise<SyncResult> {
 /**
  * Check for available updates
  */
-async function checkForUpdates(manifest?: string): Promise<void> {
+async function checkForUpdates(manifest?: string, options?: { global?: boolean }): Promise<void> {
   logger.info(chalk.cyan('Checking for updates...\n'));
 
   const claudeFiles = getClaudeFilesPath();
-  const targetPath = getTargetPath();
+  const targetPath = getTargetPath({ global: options?.global });
 
   // Load manifest if specified
   let manifestData: Manifest | null = null;
@@ -363,7 +372,7 @@ export async function runSync(options: SyncOptions): Promise<SyncResult> {
 
   // Handle check option
   if (options.check) {
-    await checkForUpdates(options.manifest);
+    await checkForUpdates(options.manifest, { global: options.global });
     return {
       success: true,
       filesUpdated: 0,
@@ -388,7 +397,7 @@ export async function runSync(options: SyncOptions): Promise<SyncResult> {
   }
 
   const claudeFiles = getClaudeFilesPath();
-  const targetPath = getTargetPath(options.project);
+  const targetPath = getTargetPath({ project: options.project, global: options.global });
 
   // Ensure target directory exists
   if (!fs.existsSync(targetPath)) {

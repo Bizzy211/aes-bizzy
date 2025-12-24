@@ -6,7 +6,11 @@
 /**
  * Available MCP server identifiers
  */
-export type MCPServerId = 'github' | 'task-master-ai' | 'context7' | 'sequential-thinking' | 'firecrawl' | 'desktop-commander' | 'beads-mcp' | 'supabase' | 'n8n' | 'exa' | 'ref';
+export type MCPServerId = 'github' | 'task-master-ai' | 'context7' | 'sequential-thinking' | 'firecrawl' | 'desktop-commander' | 'beads-mcp' | 'supabase' | 'project-management-supabase' | 'n8n' | 'exa' | 'ref';
+/**
+ * Transport type for MCP servers
+ */
+export type MCPTransport = 'stdio' | 'http';
 /**
  * Environment variable requirement
  */
@@ -17,13 +21,27 @@ export interface EnvVarRequirement {
     envKey: string;
 }
 /**
+ * HTTP header configuration for HTTP transport
+ */
+export interface MCPHttpHeader {
+    name: string;
+    valueTemplate: string;
+}
+/**
  * MCP server configuration
  */
 export interface MCPServerConfig {
     id: MCPServerId;
     name: string;
     description: string;
-    package: string;
+    /** Package name for stdio transport (npx -y <package>) */
+    package?: string;
+    /** Transport type: 'stdio' (default) or 'http' */
+    transport?: MCPTransport;
+    /** URL for HTTP transport */
+    url?: string;
+    /** HTTP headers for HTTP transport (supports variable substitution) */
+    headers?: MCPHttpHeader[];
     recommended?: boolean;
     envVars: EnvVarRequirement[];
     estimatedTokenCost?: string;

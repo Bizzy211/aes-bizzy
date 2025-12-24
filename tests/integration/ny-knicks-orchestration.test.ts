@@ -4,10 +4,13 @@
  * Real-world test case for multi-agent workflows using a sports website project.
  * Tests PM-lead delegation, sequential/parallel execution, handoff coordination,
  * and performance metrics.
+ *
+ * NOTE: Tests are skipped when development agent files are not available.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as path from 'node:path';
+import * as fs from 'node:fs';
 import type { GitHubIssue } from '../../src/types/github-automation.js';
 
 // Mock fetch globally before imports
@@ -659,8 +662,15 @@ function calculateContextPreservation(
 // Test Suites
 // ============================================================
 
-describe('NY Knicks Website Multi-Agent Orchestration', () => {
-  const agentsDir = path.join(process.cwd(), 'Claude Files', 'agents');
+// Check for agents directory in possible locations
+const PROJECT_ROOT = path.resolve(process.cwd());
+const AGENTS_DIR = fs.existsSync(path.join(PROJECT_ROOT, '.development', 'agents'))
+  ? path.join(PROJECT_ROOT, '.development', 'agents')
+  : path.join(PROJECT_ROOT, 'Claude Files', 'agents');
+const AGENTS_AVAILABLE = fs.existsSync(AGENTS_DIR);
+
+describe.skipIf(!AGENTS_AVAILABLE)('NY Knicks Website Multi-Agent Orchestration', () => {
+  const agentsDir = AGENTS_DIR;
   const testOwner = 'ny-knicks';
   const testRepo = 'official-website';
   const testToken = 'ghp_test_token_knicks_12345';

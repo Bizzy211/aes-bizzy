@@ -3,7 +3,7 @@
  *
  * Installs and configures multiple MCP servers with validation.
  */
-import type { MCPServerId, MCPServerConfig, MCPServerInstallResult, InstallationSummary, MCPInstallOptions, GenericMCPServerStatus } from '../types/mcp-servers.js';
+import type { MCPServerId, MCPServerConfig, MCPServerInstallResult, InstallationSummary, MCPInstallOptions, GenericMCPServerStatus, MCPHttpHeader } from '../types/mcp-servers.js';
 /**
  * Check if required environment variables are available
  */
@@ -19,6 +19,21 @@ export declare function isMCPServerInstalled(serverId: MCPServerId): Promise<Gen
  * Build environment variable arguments for MCP add command
  */
 export declare function buildEnvArgs(serverId: MCPServerId, customEnvVars?: Record<string, string>): string[];
+/**
+ * Resolve header value template with environment variables
+ * e.g., "Bearer ${GITHUB_TOKEN}" -> "Bearer ghp_xxxxx"
+ */
+export declare function resolveHeaderValue(template: string, customEnvVars?: Record<string, string>): string;
+/**
+ * Build HTTP header arguments for MCP add command
+ * Returns array of ['-H', 'HeaderName: HeaderValue'] pairs
+ */
+export declare function buildHttpHeaderArgs(headers: MCPHttpHeader[], customEnvVars?: Record<string, string>): string[];
+/**
+ * Build command arguments for installing an MCP server
+ * Handles both stdio (npx) and http transport types
+ */
+export declare function buildInstallArgs(config: MCPServerConfig, customEnvVars?: Record<string, string>): string[];
 /**
  * Install a single MCP server
  */

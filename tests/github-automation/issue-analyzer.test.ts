@@ -1,9 +1,13 @@
 /**
  * Tests for Issue Content Analyzer
+ *
+ * NOTE: Tests that require agent files are skipped when development
+ * files are not available (e.g., in npm package).
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
 import * as path from 'node:path';
+import * as fs from 'node:fs';
 import {
   extractKeywords,
   extractLabelKeywords,
@@ -15,8 +19,15 @@ import {
 import { invalidateCapabilityCache } from '../../src/integrations/github-automation/agent-capabilities.js';
 import type { GitHubIssue } from '../../src/types/github-automation.js';
 
+// Check for agents directory in possible locations
+const PROJECT_ROOT = path.resolve(process.cwd());
+const AGENTS_DIR = fs.existsSync(path.join(PROJECT_ROOT, '.development', 'agents'))
+  ? path.join(PROJECT_ROOT, '.development', 'agents')
+  : path.join(PROJECT_ROOT, 'Claude Files', 'agents');
+const AGENTS_AVAILABLE = fs.existsSync(AGENTS_DIR);
+
 describe('Issue Analyzer', () => {
-  const agentsDir = path.join(process.cwd(), 'Claude Files', 'agents');
+  const agentsDir = AGENTS_DIR;
 
   beforeEach(() => {
     invalidateCapabilityCache();
@@ -85,7 +96,7 @@ describe('Issue Analyzer', () => {
     });
   });
 
-  describe('analyzeIssue', () => {
+  describe.skipIf(!AGENTS_AVAILABLE)('analyzeIssue', () => {
     const createMockIssue = (
       title: string,
       body: string,
@@ -176,7 +187,7 @@ describe('Issue Analyzer', () => {
     });
   });
 
-  describe('getBestMatch', () => {
+  describe.skipIf(!AGENTS_AVAILABLE)('getBestMatch', () => {
     const createMockIssue = (title: string, body: string): GitHubIssue => ({
       id: 1,
       number: 123,
@@ -231,7 +242,7 @@ describe('Issue Analyzer', () => {
     });
   });
 
-  describe('getTopMatches', () => {
+  describe.skipIf(!AGENTS_AVAILABLE)('getTopMatches', () => {
     const createMockIssue = (title: string, body: string): GitHubIssue => ({
       id: 1,
       number: 123,

@@ -11,7 +11,14 @@ export const MCP_SERVERS = [
         id: 'github',
         name: 'GitHub MCP',
         description: 'GitHub integration for repository management and PR workflows',
-        package: '@modelcontextprotocol/server-github',
+        transport: 'http',
+        url: 'https://api.githubcopilot.com/mcp/',
+        headers: [
+            {
+                name: 'Authorization',
+                valueTemplate: 'Bearer ${GITHUB_TOKEN}',
+            },
+        ],
         recommended: true,
         category: 'essential',
         envVars: [
@@ -120,6 +127,29 @@ export const MCP_SERVERS = [
             },
         ],
         estimatedTokenCost: '~300 tokens/query',
+    },
+    {
+        id: 'project-management-supabase',
+        name: 'Project Management (Supabase)',
+        description: 'Real-time project tracking with milestones, requirements, and team notifications',
+        package: 'project-management-supabase',
+        recommended: true,
+        category: 'productivity',
+        envVars: [
+            {
+                name: 'Supabase URL',
+                description: 'Supabase project URL for project management database',
+                required: true,
+                envKey: 'SUPABASE_URL',
+            },
+            {
+                name: 'Supabase Key',
+                description: 'Supabase service role key',
+                required: true,
+                envKey: 'SUPABASE_KEY',
+            },
+        ],
+        estimatedTokenCost: '~400 tokens/operation',
     },
     {
         id: 'n8n',

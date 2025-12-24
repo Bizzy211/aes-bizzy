@@ -1,21 +1,28 @@
 /**
- * Interactive init wizard with 8-step flow
+ * Interactive init wizard with project-level configuration
  *
  * Provides a guided setup experience for the Claude Ecosystem
  * with progress tracking, skip flags, and graceful Ctrl+C handling.
+ *
+ * Default: Project-level setup (creates .claude/, .mcp.json, .env.claude)
+ * --global: User-level setup (legacy ~/.claude/ behavior)
  */
+import { type Credentials } from '../utils/env-claude.js';
 import type { PrerequisitesResult } from '../types/prerequisites.js';
 import type { GitHubAuthResult } from '../types/github.js';
 import type { InstallResult, InstallMethod } from '../types/installer.js';
 import type { TaskMasterModel, ToolTier } from '../types/task-master.js';
-import type { InstallationSummary } from '../types/mcp-servers.js';
+import type { MCPServerId } from '../types/mcp-servers.js';
 import type { SyncResult } from '../types/repo-sync.js';
-import type { BackupResult } from '../types/backup.js';
-import { type ApiKeyResult } from '../installers/api-keys.js';
 /**
- * Init wizard options with skip flags
+ * Init wizard options
  */
 export interface InitOptions {
+    /** Project name - if provided, creates new project directory */
+    projectName?: string;
+    /** Use global/user-level config instead of project-level */
+    global?: boolean;
+    /** Skip individual steps */
     skipPrerequisites?: boolean;
     skipGithub?: boolean;
     skipSync?: boolean;
@@ -23,22 +30,34 @@ export interface InitOptions {
     skipTaskmaster?: boolean;
     skipMcp?: boolean;
     skipApiKeys?: boolean;
+    /** Force overwrite existing files */
     force?: boolean;
+    /** Auto-confirm prompts */
     yes?: boolean;
     /** Skip backup before repo sync */
     noBackup?: boolean;
-    /** Beads installation method (npm, winget, brew, cargo, binary) - bypasses interactive selection */
+    /** Beads installation method */
     beadsMethod?: InstallMethod;
-    /** TaskMaster model (claude-sonnet-4-20250514, gpt-4o, etc.) - bypasses interactive selection */
+    /** TaskMaster model */
     taskmasterModel?: string;
-    /** Auto-select defaults when not in TTY (non-interactive mode) */
+    /** Non-interactive mode */
     nonInteractive?: boolean;
-    /** API Keys - can be provided via CLI flags */
+    /** Skip git initialization */
+    skipGit?: boolean;
+    /** Create GitHub repository */
+    github?: boolean;
+    /** Make GitHub repo public (default: private) */
+    public?: boolean;
+    /** Initialize TaskMaster in project */
+    taskmaster?: boolean;
+    /** Initialize Beads in project */
+    beads?: boolean;
+    /** Pre-provided API keys */
     githubToken?: string;
-    exaApiKey?: string;
-    refApiKey?: string;
     anthropicApiKey?: string;
     perplexityApiKey?: string;
+    supabaseUrl?: string;
+    supabaseKey?: string;
 }
 /**
  * Wizard state to track progress
@@ -46,10 +65,11 @@ export interface InitOptions {
 interface WizardState {
     currentStep: number;
     totalSteps: number;
+    projectPath: string;
+    isGlobal: boolean;
     prerequisites?: PrerequisitesResult;
     githubAuth?: GitHubAuthResult;
-    apiKeysResult?: ApiKeyResult;
-    backupResult?: BackupResult;
+    credentials: Credentials;
     syncResult?: SyncResult;
     beadsInstall?: InstallResult;
     beadsMethod?: InstallMethod;
@@ -58,7 +78,7 @@ interface WizardState {
         model?: TaskMasterModel;
         tier?: ToolTier;
     };
-    mcpInstall?: InstallationSummary;
+    selectedMcpServers?: MCPServerId[];
     startTime: number;
     cancelled: boolean;
 }

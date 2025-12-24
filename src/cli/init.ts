@@ -1,18 +1,23 @@
 /**
- * Interactive init wizard with 8-step flow
+ * Interactive init wizard with project-level configuration
  *
  * Provides a guided setup experience for the Claude Ecosystem
  * with progress tracking, skip flags, and graceful Ctrl+C handling.
+ *
+ * Default: Project-level setup (creates .claude/, .mcp.json, .env.claude)
+ * --global: User-level setup (legacy ~/.claude/ behavior)
  */
 
 import * as prompts from '@clack/prompts';
 import gradientString from 'gradient-string';
 import ora from 'ora';
+import * as fs from 'node:fs/promises';
+import * as path from 'node:path';
+import { existsSync, mkdirSync } from 'node:fs';
 import { createLogger } from '../utils/logger.js';
-import { initConfig, saveConfig } from '../config/ecosystem-config.js';
 import { checkPrerequisites } from '../installers/prerequisites.js';
 import { installClaudeCode } from '../installers/claude-code.js';
-import { authenticateGitHub, getStoredGitHubToken } from '../installers/github.js';
+import { getStoredGitHubToken } from '../installers/github.js';
 import { syncPrivateRepo } from '../sync/repo-sync.js';
 import {
   getAvailableMethods,
@@ -25,27 +30,21 @@ import {
   selectModel,
   isTaskMasterInstalled,
 } from '../installers/task-master.js';
+import { selectMCPServers } from '../installers/mcp-servers.js';
+import { updateGitignore, CLAUDE_GITIGNORE_ENTRIES } from '../utils/gitignore.js';
+import { createMcpConfig } from '../utils/mcp-config.js';
 import {
-  selectMCPServers,
-  installMCPServers,
-} from '../installers/mcp-servers.js';
+  saveEnvClaude,
+  getRequiredCredentialsForServers,
+  type Credentials,
+} from '../utils/env-claude.js';
+import { executeCommand } from '../utils/shell.js';
 import type { PrerequisitesResult } from '../types/prerequisites.js';
 import type { GitHubAuthResult } from '../types/github.js';
 import type { InstallResult, InstallMethod } from '../types/installer.js';
 import type { TaskMasterModel, ToolTier } from '../types/task-master.js';
-import type { InstallationSummary, MCPServerId } from '../types/mcp-servers.js';
+import type { MCPServerId } from '../types/mcp-servers.js';
 import type { SyncResult } from '../types/repo-sync.js';
-import type { InstalledComponent } from '../types/ecosystem.js';
-import type { BackupResult } from '../types/backup.js';
-import {
-  setupApiKeys,
-  type ApiKeys,
-  type ApiKeyResult,
-} from '../installers/api-keys.js';
-import { createBackup, getClaudeConfigDir } from '../sync/backup.js';
-import * as fs from 'node:fs/promises';
-import * as path from 'node:path';
-import { existsSync } from 'node:fs';
 
 const logger = createLogger({ context: { module: 'init-wizard' } });
 
@@ -57,9 +56,14 @@ function isTTY(): boolean {
 }
 
 /**
- * Init wizard options with skip flags
+ * Init wizard options
  */
 export interface InitOptions {
+  /** Project name - if provided, creates new project directory */
+  projectName?: string;
+  /** Use global/user-level config instead of project-level */
+  global?: boolean;
+  /** Skip individual steps */
   skipPrerequisites?: boolean;
   skipGithub?: boolean;
   skipSync?: boolean;
@@ -67,22 +71,34 @@ export interface InitOptions {
   skipTaskmaster?: boolean;
   skipMcp?: boolean;
   skipApiKeys?: boolean;
+  /** Force overwrite existing files */
   force?: boolean;
+  /** Auto-confirm prompts */
   yes?: boolean;
   /** Skip backup before repo sync */
   noBackup?: boolean;
-  /** Beads installation method (npm, winget, brew, cargo, binary) - bypasses interactive selection */
+  /** Beads installation method */
   beadsMethod?: InstallMethod;
-  /** TaskMaster model (claude-sonnet-4-20250514, gpt-4o, etc.) - bypasses interactive selection */
+  /** TaskMaster model */
   taskmasterModel?: string;
-  /** Auto-select defaults when not in TTY (non-interactive mode) */
+  /** Non-interactive mode */
   nonInteractive?: boolean;
-  /** API Keys - can be provided via CLI flags */
+  /** Skip git initialization */
+  skipGit?: boolean;
+  /** Create GitHub repository */
+  github?: boolean;
+  /** Make GitHub repo public (default: private) */
+  public?: boolean;
+  /** Initialize TaskMaster in project */
+  taskmaster?: boolean;
+  /** Initialize Beads in project */
+  beads?: boolean;
+  /** Pre-provided API keys */
   githubToken?: string;
-  exaApiKey?: string;
-  refApiKey?: string;
   anthropicApiKey?: string;
   perplexityApiKey?: string;
+  supabaseUrl?: string;
+  supabaseKey?: string;
 }
 
 /**
@@ -91,72 +107,74 @@ export interface InitOptions {
 interface WizardState {
   currentStep: number;
   totalSteps: number;
+  projectPath: string;
+  isGlobal: boolean;
   prerequisites?: PrerequisitesResult;
   githubAuth?: GitHubAuthResult;
-  apiKeysResult?: ApiKeyResult;
-  backupResult?: BackupResult;
+  credentials: Credentials;
   syncResult?: SyncResult;
   beadsInstall?: InstallResult;
   beadsMethod?: InstallMethod;
   taskMasterInstall?: { success: boolean; model?: TaskMasterModel; tier?: ToolTier };
-  mcpInstall?: InstallationSummary;
+  selectedMcpServers?: MCPServerId[];
   startTime: number;
   cancelled: boolean;
 }
 
 /**
- * Customization stats for backup decision
+ * CLAUDE.md template
  */
-interface CustomizationStats {
-  hasCustomizations: boolean;
-  agentCount: number;
-  hookCount: number;
-  skillCount: number;
-  commandCount: number;
-  totalFiles: number;
-}
+const CLAUDE_MD_TEMPLATE = `# {{PROJECT_NAME}}
 
-/**
- * Detect existing customizations in ~/.claude directory
- */
-async function detectExistingCustomizations(claudeDir: string): Promise<CustomizationStats> {
-  const agentDir = path.join(claudeDir, 'agents');
-  const hookDir = path.join(claudeDir, 'hooks');
-  const skillDir = path.join(claudeDir, 'skills');
-  const commandDir = path.join(claudeDir, 'commands');
+## Project Overview
+This project uses JHC Agentic EcoSystem - Bizzy for AI-assisted development.
 
-  const countFiles = async (dir: string): Promise<number> => {
-    try {
-      const entries = await fs.readdir(dir, { withFileTypes: true });
-      let count = 0;
-      for (const entry of entries) {
-        if (entry.isFile()) {
-          count++;
-        } else if (entry.isDirectory()) {
-          count += await countFiles(path.join(dir, entry.name));
-        }
-      }
-      return count;
-    } catch {
-      return 0;
-    }
-  };
+## Development Guidelines
 
-  const agentCount = await countFiles(agentDir);
-  const hookCount = await countFiles(hookDir);
-  const skillCount = await countFiles(skillDir);
-  const commandCount = await countFiles(commandDir);
-  const totalFiles = agentCount + hookCount + skillCount + commandCount;
+### Code Style
+- Follow consistent naming conventions
+- Write clear, self-documenting code
+- Include meaningful comments for complex logic
 
-  return {
-    hasCustomizations: totalFiles > 0,
-    agentCount,
-    hookCount,
-    skillCount,
-    commandCount,
-    totalFiles,
-  };
-}
+### Git Workflow
+- Write descriptive commit messages
+- Create feature branches for new work
+- Keep commits focused and atomic
+
+### Testing
+- Write tests for new features
+- Ensure all tests pass before committing
+- Aim for good test coverage
+
+## Commands
+
+\`\`\`bash
+# Development
+npm run dev       # Start development server
+npm run build     # Build for production
+npm test          # Run tests
+
+# Claude Code
+claude            # Start Claude Code session
+\`\`\`
+
+## Project Structure
+
+\`\`\`
+{{PROJECT_NAME}}/
+├── .claude/          # Claude configuration (gitignored)
+├── .mcp.json         # MCP server config (gitignored)
+├── .env.claude       # Credentials (gitignored)
+├── src/              # Source code
+├── tests/            # Test files
+├── CLAUDE.md         # This file
+└── package.json      # Dependencies
+\`\`\`
+
+## Notes
+- Created: {{CREATED_AT}}
+- Setup: JHC Agentic EcoSystem - Bizzy
+`;
 
 /**
  * Global state for cleanup on Ctrl+C
@@ -178,11 +196,8 @@ function setupSignalHandlers(): void {
       wizardState.cancelled = true;
       prompts.cancel('Setup cancelled by user');
       console.log('\nCleaning up...\n');
-
-      // Log what step we were on
       logger.debug(`Cancelled at step ${wizardState.currentStep}/${wizardState.totalSteps}`);
-
-      process.exit(130); // Standard SIGINT exit code
+      process.exit(130);
     }
   };
 
@@ -207,10 +222,83 @@ function showWelcomeBanner(): void {
 }
 
 /**
+ * Create project directory structure
+ */
+async function createProjectStructure(
+  projectPath: string,
+  projectName: string,
+  options: InitOptions
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    // Create main directory if it doesn't exist
+    if (!existsSync(projectPath)) {
+      mkdirSync(projectPath, { recursive: true });
+    }
+
+    // Create .claude directory
+    const claudeDir = path.join(projectPath, '.claude');
+    if (!existsSync(claudeDir)) {
+      mkdirSync(claudeDir, { recursive: true });
+    }
+
+    // Create src and tests directories for new projects
+    if (options.projectName) {
+      const srcDir = path.join(projectPath, 'src');
+      const testsDir = path.join(projectPath, 'tests');
+
+      if (!existsSync(srcDir)) {
+        mkdirSync(srcDir, { recursive: true });
+      }
+      if (!existsSync(testsDir)) {
+        mkdirSync(testsDir, { recursive: true });
+      }
+    }
+
+    // Create CLAUDE.md
+    const claudeMdPath = path.join(projectPath, 'CLAUDE.md');
+    if (!existsSync(claudeMdPath) || options.force) {
+      const content = CLAUDE_MD_TEMPLATE
+        .replace(/\{\{PROJECT_NAME\}\}/g, projectName)
+        .replace(/\{\{CREATED_AT\}\}/g, new Date().toISOString());
+      await fs.writeFile(claudeMdPath, content, 'utf-8');
+    }
+
+    // Create basic package.json for new projects
+    if (options.projectName) {
+      const packageJsonPath = path.join(projectPath, 'package.json');
+      if (!existsSync(packageJsonPath)) {
+        const packageJson = {
+          name: projectName,
+          version: '0.1.0',
+          description: `A project created with JHC Agentic EcoSystem - Bizzy`,
+          type: 'module',
+          scripts: {
+            dev: "echo 'Add your dev script'",
+            build: "echo 'Add your build script'",
+            test: "echo 'Add your test script'",
+          },
+          keywords: [],
+          author: '',
+          license: 'MIT',
+        };
+        await fs.writeFile(packageJsonPath, JSON.stringify(packageJson, null, 2), 'utf-8');
+      }
+    }
+
+    return { success: true };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+/**
  * Step 1: Prerequisites check
  */
 async function stepPrerequisites(state: WizardState, options: InitOptions): Promise<boolean> {
-  prompts.log.step('Step 1/8: Checking Prerequisites');
+  prompts.log.step(`Step 1/${state.totalSteps}: Checking Prerequisites`);
 
   spinner = ora('Checking installed tools...').start();
 
@@ -219,7 +307,6 @@ async function stepPrerequisites(state: WizardState, options: InitOptions): Prom
     state.prerequisites = result;
     spinner.succeed('Prerequisites checked');
 
-    // Display results
     const icons = {
       installed: '\u2705',
       missing: '\u274c',
@@ -233,7 +320,6 @@ async function stepPrerequisites(state: WizardState, options: InitOptions): Prom
     console.log(`  ${result.claudeCode.installed ? icons.installed : icons.optional} Claude Code ${result.claudeCode.version || '(not found)'}`);
     console.log('');
 
-    // Check critical prerequisites
     if (!result.node.installed || !result.npm.installed || !result.git.installed) {
       prompts.log.error('Missing critical prerequisites. Please install them before continuing.');
       return false;
@@ -241,23 +327,15 @@ async function stepPrerequisites(state: WizardState, options: InitOptions): Prom
 
     // Offer to install Claude Code if missing
     if (!result.claudeCode.installed) {
-      let installClaude = false;
+      let installClaude = options.nonInteractive || options.yes || !isTTY();
 
-      if (options.nonInteractive || options.yes || !isTTY()) {
-        // Non-interactive mode: auto-install Claude Code
-        installClaude = true;
-        prompts.log.info('Non-interactive mode: auto-installing Claude Code CLI');
-      } else {
-        // Interactive mode: ask user
+      if (!installClaude && isTTY()) {
         const confirm = await prompts.confirm({
           message: 'Claude Code CLI not found. Install now?',
           initialValue: true,
         });
 
-        if (prompts.isCancel(confirm)) {
-          return false;
-        }
-
+        if (prompts.isCancel(confirm)) return false;
         installClaude = confirm;
       }
 
@@ -283,99 +361,164 @@ async function stepPrerequisites(state: WizardState, options: InitOptions): Prom
 }
 
 /**
- * Step 2: GitHub authentication
+ * Step 2: Credentials collection
  */
-async function stepGitHubAuth(state: WizardState): Promise<boolean> {
-  prompts.log.step('Step 2/8: GitHub Authentication');
+async function stepCredentials(state: WizardState, options: InitOptions): Promise<boolean> {
+  prompts.log.step(`Step 2/${state.totalSteps}: API Keys & Credentials`);
 
   try {
-    const result = await authenticateGitHub({ allowSkip: true });
-    state.githubAuth = result;
+    // Start with provided options
+    const credentials: Credentials = {};
 
-    if (result.authenticated) {
-      prompts.log.success(`Authenticated as ${result.username}`);
-    } else if (result.method === 'skipped') {
-      prompts.log.warn('GitHub authentication skipped. Repository sync will be unavailable.');
-    } else {
-      prompts.log.warn(`Authentication failed: ${result.error}`);
-    }
+    if (options.githubToken) credentials.GITHUB_TOKEN = options.githubToken;
+    if (options.anthropicApiKey) credentials.ANTHROPIC_API_KEY = options.anthropicApiKey;
+    if (options.perplexityApiKey) credentials.PERPLEXITY_API_KEY = options.perplexityApiKey;
+    if (options.supabaseUrl) credentials.SUPABASE_URL = options.supabaseUrl;
+    if (options.supabaseKey) credentials.SUPABASE_KEY = options.supabaseKey;
 
-    return true;
-  } catch (error) {
-    logger.error(`GitHub auth error: ${error instanceof Error ? error.message : String(error)}`);
-    prompts.log.warn('GitHub authentication failed. Continuing without it.');
-    return true;
-  }
-}
-
-/**
- * Step 3: API Keys Configuration
- */
-async function stepApiKeys(state: WizardState, options: InitOptions): Promise<boolean> {
-  prompts.log.step('Step 3/8: API Keys Configuration');
-
-  try {
-    // Build provided keys from CLI options
-    const providedKeys: Partial<ApiKeys> = {};
-    if (options.githubToken) providedKeys.GITHUB_TOKEN = options.githubToken;
-    if (options.exaApiKey) providedKeys.EXA_API_KEY = options.exaApiKey;
-    if (options.refApiKey) providedKeys.REF_API_KEY = options.refApiKey;
-    if (options.anthropicApiKey) providedKeys.ANTHROPIC_API_KEY = options.anthropicApiKey;
-    if (options.perplexityApiKey) providedKeys.PERPLEXITY_API_KEY = options.perplexityApiKey;
-
-    // Also try to get GitHub token from gh CLI (auto-detect)
-    if (!providedKeys.GITHUB_TOKEN && state.githubAuth?.authenticated) {
+    // Try to get GitHub token from gh CLI
+    if (!credentials.GITHUB_TOKEN) {
       const storedToken = await getStoredGitHubToken();
       if (storedToken) {
-        providedKeys.GITHUB_TOKEN = storedToken;
+        credentials.GITHUB_TOKEN = storedToken;
+        prompts.log.success('GitHub token detected from gh CLI');
       }
     }
 
-    const result = await setupApiKeys({
-      nonInteractive: options.nonInteractive || !isTTY(),
-      providedKeys,
-    });
+    // Interactive credential collection
+    if (!options.nonInteractive && isTTY()) {
+      // Ask about GitHub token if not set
+      if (!credentials.GITHUB_TOKEN) {
+        const token = await prompts.password({
+          message: 'GitHub Personal Access Token (or Enter to skip):',
+        });
 
-    state.apiKeysResult = result;
+        if (!prompts.isCancel(token) && token) {
+          credentials.GITHUB_TOKEN = token;
+        }
+      }
 
-    if (!result.success) {
-      prompts.log.warn(`API keys setup incomplete: ${result.error}`);
-      return true; // Continue anyway
+      // Ask about Anthropic API key
+      if (!credentials.ANTHROPIC_API_KEY) {
+        const key = await prompts.password({
+          message: 'Anthropic API Key (or Enter to skip):',
+        });
+
+        if (!prompts.isCancel(key) && key) {
+          credentials.ANTHROPIC_API_KEY = key;
+        }
+      }
+
+      // Ask about Supabase if not set
+      if (!credentials.SUPABASE_URL) {
+        const url = await prompts.text({
+          message: 'Supabase Project URL (or Enter to skip):',
+          placeholder: 'https://xxxxx.supabase.co',
+        });
+
+        if (!prompts.isCancel(url) && url) {
+          credentials.SUPABASE_URL = url;
+
+          // Ask for key only if URL provided
+          const key = await prompts.password({
+            message: 'Supabase Service Role Key:',
+          });
+
+          if (!prompts.isCancel(key) && key) {
+            credentials.SUPABASE_KEY = key;
+          }
+        }
+      }
     }
 
-    // Show summary
-    const configured = Object.entries(result.keys)
-      .filter(([_, v]) => v)
-      .map(([k]) => k);
+    state.credentials = credentials;
 
-    if (configured.length > 0) {
-      prompts.log.success(`Configured ${configured.length} API keys`);
-      console.log(`  Saved to: ${result.envPath}`);
+    // Save credentials to .env.claude (project-level) or show summary
+    if (!state.isGlobal) {
+      const credCount = Object.values(credentials).filter(Boolean).length;
+      if (credCount > 0) {
+        const result = await saveEnvClaude(state.projectPath, credentials);
+        if (result.success) {
+          prompts.log.success(`Saved ${credCount} credential(s) to .env.claude`);
+        } else {
+          prompts.log.warn(`Failed to save credentials: ${result.error}`);
+        }
+      } else {
+        prompts.log.info('No credentials configured (you can add them later to .env.claude)');
+      }
     }
 
     return true;
   } catch (error) {
-    logger.error(`API keys error: ${error instanceof Error ? error.message : String(error)}`);
-    prompts.log.warn('API keys configuration failed. You can configure later.');
+    logger.error(`Credentials error: ${error instanceof Error ? error.message : String(error)}`);
+    prompts.log.warn('Credentials configuration failed. You can configure later.');
     return true;
   }
 }
 
 /**
- * Step 4: Repository sync
+ * Step 3: MCP server selection and .mcp.json creation
  */
-async function stepRepoSync(state: WizardState, options: InitOptions): Promise<boolean> {
-  prompts.log.step('Step 4/8: Repository Sync');
+async function stepMcpServers(state: WizardState, options: InitOptions): Promise<boolean> {
+  prompts.log.step(`Step 3/${state.totalSteps}: MCP Servers`);
 
-  // Need GitHub token for sync
-  const token = await getStoredGitHubToken();
-  if (!token && !state.githubAuth?.authenticated) {
-    prompts.log.warn('Skipping repository sync (no GitHub authentication)');
+  try {
+    let selectedServers: MCPServerId[] | undefined;
+
+    if (options.nonInteractive || options.yes || !isTTY()) {
+      // Non-interactive: use recommended servers
+      selectedServers = ['github', 'task-master-ai', 'context7', 'sequential-thinking'];
+      prompts.log.info(`Using recommended MCP servers: ${selectedServers.join(', ')}`);
+    } else {
+      selectedServers = await selectMCPServers(false) ?? undefined;
+    }
+
+    if (!selectedServers || selectedServers.length === 0) {
+      prompts.log.info('No MCP servers selected');
+      return true;
+    }
+
+    state.selectedMcpServers = selectedServers;
+
+    // Create .mcp.json (project-level)
+    if (!state.isGlobal) {
+      spinner = ora('Creating .mcp.json...').start();
+
+      const result = await createMcpConfig(state.projectPath, selectedServers);
+
+      if (result.success) {
+        spinner.succeed(`Created .mcp.json with ${result.serversAdded} server(s)`);
+      } else {
+        spinner.fail(`Failed to create .mcp.json: ${result.error}`);
+      }
+
+      // Check for missing credentials
+      const requiredCreds = getRequiredCredentialsForServers(selectedServers);
+      const missingCreds = requiredCreds.filter(key => !state.credentials[key]);
+
+      if (missingCreds.length > 0) {
+        prompts.log.warn(`Missing credentials for full functionality: ${missingCreds.join(', ')}`);
+        prompts.log.info('Add them to .env.claude when available');
+      }
+    }
+
+    return true;
+  } catch (error) {
+    if (spinner) spinner.fail('MCP server setup failed');
+    logger.error(`MCP error: ${error instanceof Error ? error.message : String(error)}`);
     return true;
   }
+}
 
+/**
+ * Step 4: Repository sync (agents, hooks, skills)
+ */
+async function stepRepoSync(state: WizardState, options: InitOptions): Promise<boolean> {
+  prompts.log.step(`Step 4/${state.totalSteps}: Repository Sync`);
+
+  const token = state.credentials.GITHUB_TOKEN || await getStoredGitHubToken();
   if (!token) {
-    prompts.log.warn('Skipping repository sync (token not available)');
+    prompts.log.warn('Skipping repository sync (no GitHub token)');
     return true;
   }
 
@@ -383,19 +526,15 @@ async function stepRepoSync(state: WizardState, options: InitOptions): Promise<b
     let componentTypes: string[];
 
     if (options.nonInteractive || options.yes || !isTTY()) {
-      // Non-interactive mode: use default components
       componentTypes = ['agents', 'hooks', 'skills'];
-      prompts.log.info(`Non-interactive mode: syncing default components (${componentTypes.join(', ')})`);
+      prompts.log.info(`Syncing: ${componentTypes.join(', ')}`);
     } else {
-      // Interactive mode: component selection
       const selected = await prompts.multiselect({
         message: 'Select components to sync:',
         options: [
-          { value: 'agents', label: 'Agents', hint: 'AI agent definitions (11 available)' },
-          { value: 'hooks', label: 'Hooks', hint: 'Event handlers (36 available)' },
-          { value: 'skills', label: 'Skills', hint: 'Reusable skill definitions (10 available)' },
-          { value: 'scripts', label: 'Scripts', hint: 'Utility scripts' },
-          { value: 'slash-commands', label: 'Slash Commands', hint: 'Custom / commands (6 available)' },
+          { value: 'agents', label: 'Agents', hint: 'AI agent definitions' },
+          { value: 'hooks', label: 'Hooks', hint: 'Event handlers' },
+          { value: 'skills', label: 'Skills', hint: 'Reusable skill definitions' },
         ],
         initialValues: ['agents', 'hooks', 'skills'],
         required: false,
@@ -414,63 +553,26 @@ async function stepRepoSync(state: WizardState, options: InitOptions): Promise<b
       return true;
     }
 
-    // Check for existing customizations and offer backup
-    const claudeDir = getClaudeConfigDir();
-    if (existsSync(claudeDir) && !options.noBackup) {
-      const stats = await detectExistingCustomizations(claudeDir);
+    spinner = ora('Syncing components...').start();
 
-      if (stats.hasCustomizations) {
-        prompts.log.warn('Existing ~/.claude folder detected:');
-        if (stats.agentCount > 0) console.log(`  - Agents: ${stats.agentCount} files`);
-        if (stats.hookCount > 0) console.log(`  - Hooks: ${stats.hookCount} files`);
-        if (stats.skillCount > 0) console.log(`  - Skills: ${stats.skillCount} files`);
-        if (stats.commandCount > 0) console.log(`  - Commands: ${stats.commandCount} files`);
-        console.log('');
-
-        // Create backup
-        spinner = ora('Creating backup...').start();
-        const backupResult = await createBackup('pre-repo-sync');
-        state.backupResult = backupResult;
-
-        if (backupResult.success) {
-          spinner.succeed(`Backup created: ${path.basename(backupResult.path)}`);
-          prompts.log.info(`Restore with: aes-bizzy restore ${backupResult.manifest.id}`);
-        } else {
-          spinner.fail(`Backup failed: ${backupResult.error}`);
-
-          // Ask user if they want to continue without backup
-          if (!options.force && !options.nonInteractive && isTTY()) {
-            const proceed = await prompts.confirm({
-              message: 'Continue sync without backup?',
-              initialValue: false,
-            });
-
-            if (prompts.isCancel(proceed) || !proceed) {
-              prompts.log.warn('Repository sync cancelled');
-              return true;
-            }
-          } else if (!options.force) {
-            prompts.log.warn('Use --force to continue without backup');
-            return true;
-          }
-        }
-      }
-    }
-
-    spinner = ora('Syncing components from repository...').start();
+    // Sync to project .claude/ directory
+    const targetPath = state.isGlobal
+      ? path.join(require('os').homedir(), '.claude')
+      : path.join(state.projectPath, '.claude');
 
     const result = await syncPrivateRepo({
       token,
-      components: componentTypes as ('agents' | 'hooks' | 'skills' | 'scripts' | 'slash-commands')[],
+      components: componentTypes as ('agents' | 'hooks' | 'skills')[],
       force: options.force,
       dryRun: false,
+      targetPath,
     });
 
     state.syncResult = result;
 
     if (result.success) {
       const syncedCount = result.synced.filter(s => s.action !== 'skipped').length;
-      spinner.succeed(`Synced ${syncedCount} components`);
+      spinner.succeed(`Synced ${syncedCount} components to ${state.isGlobal ? '~/.claude' : '.claude/'}`);
     } else {
       spinner.fail(`Sync completed with errors: ${result.errors.join(', ')}`);
     }
@@ -479,7 +581,7 @@ async function stepRepoSync(state: WizardState, options: InitOptions): Promise<b
   } catch (error) {
     if (spinner) spinner.fail('Repository sync failed');
     logger.error(`Sync error: ${error instanceof Error ? error.message : String(error)}`);
-    prompts.log.warn('Repository sync failed. You can run it later with: aes-bizzy sync');
+    prompts.log.warn('You can run sync later with: aes-bizzy sync');
     return true;
   }
 }
@@ -488,18 +590,16 @@ async function stepRepoSync(state: WizardState, options: InitOptions): Promise<b
  * Step 5: Beads installation
  */
 async function stepBeadsInstall(state: WizardState, options: InitOptions): Promise<boolean> {
-  prompts.log.step('Step 5/8: Beads Installation');
+  prompts.log.step(`Step 5/${state.totalSteps}: Beads Installation`);
 
-  // Check if already installed
   if (await isBeadsInstalled()) {
     const version = await getBeadsVersion();
     prompts.log.success(`Beads already installed (v${version})`);
-    state.beadsInstall = { success: true, method: 'npm', version: version || undefined };
+    state.beadsInstall = { success: true, method: 'binary', version: version || undefined };
     return true;
   }
 
   try {
-    // Get available methods
     const methods = await getAvailableMethods();
     const availableMethods = methods.filter(m => m.available);
 
@@ -508,55 +608,32 @@ async function stepBeadsInstall(state: WizardState, options: InitOptions): Promi
       return true;
     }
 
-    let selectedMethod: InstallMethod;
-
-    // Check for explicit method from options or environment variable
-    const envMethod = process.env['AES_BEADS_METHOD'] as InstallMethod | undefined;
-    const explicitMethod = options.beadsMethod || envMethod;
-
-    // Helper to get the preferred or first available method
     const getDefaultMethod = (): InstallMethod => {
       const preferred = availableMethods.find(m => m.preferred);
       return preferred?.method ?? availableMethods[0]!.method;
     };
 
+    const envMethod = process.env['AES_BEADS_METHOD'] as InstallMethod | undefined;
+    const explicitMethod = options.beadsMethod || envMethod;
+
+    let selectedMethod: InstallMethod;
+
     if (explicitMethod) {
-      // Validate the method is available
       const methodConfig = availableMethods.find(m => m.method === explicitMethod);
       if (methodConfig) {
         selectedMethod = explicitMethod;
-        prompts.log.info(`Using specified Beads installation method: ${selectedMethod}`);
       } else {
-        prompts.log.warn(`Specified method '${explicitMethod}' not available, using preferred method`);
+        prompts.log.warn(`Method '${explicitMethod}' not available, using preferred`);
         selectedMethod = getDefaultMethod();
       }
-    } else if (options.nonInteractive || options.yes || !isTTY()) {
-      // Non-interactive mode: use preferred method automatically
-      selectedMethod = getDefaultMethod();
-      prompts.log.info(`Non-interactive mode: using ${selectedMethod} for Beads installation`);
     } else {
-      // Interactive mode: present method selection
-      const methodOptions = availableMethods.map(m => ({
-        value: m.method,
-        label: m.method.charAt(0).toUpperCase() + m.method.slice(1),
-        hint: m.preferred ? '(recommended)' : undefined,
-      }));
-
-      const userSelection = await prompts.select({
-        message: 'Select Beads installation method:',
-        options: methodOptions,
-        initialValue: availableMethods.find(m => m.preferred)?.method,
-      });
-
-      if (prompts.isCancel(userSelection)) {
-        prompts.log.warn('Beads installation skipped');
-        return true;
-      }
-
-      selectedMethod = userSelection as InstallMethod;
+      selectedMethod = getDefaultMethod();
     }
 
     state.beadsMethod = selectedMethod;
+
+    const platform = process.platform === 'win32' ? 'Windows' : process.platform === 'darwin' ? 'macOS' : 'Linux';
+    prompts.log.info(`Installing Beads via ${selectedMethod} (recommended for ${platform})`);
 
     spinner = ora(`Installing Beads via ${selectedMethod}...`).start();
 
@@ -569,15 +646,19 @@ async function stepBeadsInstall(state: WizardState, options: InitOptions): Promi
 
     if (result.success) {
       spinner.succeed(`Beads installed via ${selectedMethod} (v${result.version})`);
+
+      // Initialize beads in project if requested
+      if (options.beads && !state.isGlobal) {
+        await executeCommand('bd', ['init'], { cwd: state.projectPath });
+      }
     } else {
       spinner.fail(`Beads installation failed: ${result.error}`);
-      prompts.log.warn('You can install Beads manually later');
     }
 
     return true;
   } catch (error) {
     if (spinner) spinner.fail('Beads installation failed');
-    logger.error(`Beads install error: ${error instanceof Error ? error.message : String(error)}`);
+    logger.error(`Beads error: ${error instanceof Error ? error.message : String(error)}`);
     return true;
   }
 }
@@ -586,32 +667,32 @@ async function stepBeadsInstall(state: WizardState, options: InitOptions): Promi
  * Step 6: Task Master installation
  */
 async function stepTaskMasterInstall(state: WizardState, options: InitOptions): Promise<boolean> {
-  prompts.log.step('Step 6/8: Task Master Installation');
+  prompts.log.step(`Step 6/${state.totalSteps}: Task Master Installation`);
 
-  // Check if already installed
   const status = await isTaskMasterInstalled();
   if (status.available) {
     prompts.log.success('Task Master already installed');
     state.taskMasterInstall = { success: true };
+
+    // Initialize in project if requested
+    if (options.taskmaster && !state.isGlobal) {
+      await executeCommand('npx', ['task-master', 'init', '--yes'], { cwd: state.projectPath });
+    }
+
     return true;
   }
 
   try {
     let model: TaskMasterModel | undefined;
 
-    // Check for explicit model from options or environment variable
     const envModel = process.env['AES_TASKMASTER_MODEL'] as TaskMasterModel | undefined;
     const explicitModel = options.taskmasterModel || envModel;
 
     if (explicitModel) {
       model = explicitModel as TaskMasterModel;
-      prompts.log.info(`Using specified TaskMaster model: ${model}`);
     } else if (options.nonInteractive || options.yes || !isTTY()) {
-      // Non-interactive mode: use default model
       model = 'claude-sonnet-4-20250514' as TaskMasterModel;
-      prompts.log.info(`Non-interactive mode: using ${model} for TaskMaster`);
     } else {
-      // Interactive mode: select model
       model = await selectModel(false) ?? undefined;
     }
 
@@ -620,7 +701,7 @@ async function stepTaskMasterInstall(state: WizardState, options: InitOptions): 
       return true;
     }
 
-    spinner = ora('Installing Task Master MCP server...').start();
+    spinner = ora('Installing Task Master...').start();
 
     const result = await installTaskMaster({
       model,
@@ -632,190 +713,138 @@ async function stepTaskMasterInstall(state: WizardState, options: InitOptions): 
 
     if (result.success) {
       spinner.succeed(`Task Master installed with ${model}`);
+
+      // Initialize in project if requested
+      if (options.taskmaster && !state.isGlobal) {
+        await executeCommand('npx', ['task-master', 'init', '--yes'], { cwd: state.projectPath });
+      }
     } else {
       spinner.fail(`Task Master installation failed: ${result.error}`);
-      prompts.log.warn('You can install Task Master later with: aes-bizzy add task-master');
     }
 
     return true;
   } catch (error) {
     if (spinner) spinner.fail('Task Master installation failed');
-    logger.error(`Task Master install error: ${error instanceof Error ? error.message : String(error)}`);
+    logger.error(`Task Master error: ${error instanceof Error ? error.message : String(error)}`);
     return true;
   }
 }
 
 /**
- * Step 7: MCP servers installation
+ * Step 7: Update .gitignore
  */
-async function stepMcpServersInstall(state: WizardState, options: InitOptions): Promise<boolean> {
-  prompts.log.step('Step 7/8: MCP Servers');
-
-  try {
-    let selectedServers: MCPServerId[] | undefined;
-
-    if (options.nonInteractive || options.yes || !isTTY()) {
-      // Non-interactive mode: skip MCP server selection (can be configured later)
-      prompts.log.info('Non-interactive mode: skipping MCP server selection');
-      prompts.log.info('You can configure MCP servers later with: aes-bizzy config');
-      return true;
-    } else {
-      // Interactive mode: select servers
-      selectedServers = await selectMCPServers(false) ?? undefined;
-    }
-
-    if (!selectedServers || selectedServers.length === 0) {
-      prompts.log.info('No MCP servers selected');
-      return true;
-    }
-
-    spinner = ora(`Installing ${selectedServers.length} MCP server(s)...`).start();
-
-    const summary = await installMCPServers(selectedServers, { showSpinner: false });
-    state.mcpInstall = summary;
-
-    if (summary.installed.length > 0) {
-      spinner.succeed(`Installed ${summary.installed.length} MCP server(s)`);
-    }
-
-    if (summary.skipped.length > 0) {
-      prompts.log.warn(`Skipped ${summary.skipped.length} server(s) (missing API keys)`);
-    }
-
-    if (summary.failed.length > 0) {
-      prompts.log.error(`Failed to install ${summary.failed.length} server(s)`);
-    }
-
-    return true;
-  } catch (error) {
-    if (spinner) spinner.fail('MCP server installation failed');
-    logger.error(`MCP install error: ${error instanceof Error ? error.message : String(error)}`);
+async function stepGitignore(state: WizardState, options: InitOptions): Promise<boolean> {
+  if (state.isGlobal) {
+    // Skip for global mode
     return true;
   }
-}
 
-/**
- * Step 8: Summary and ecosystem.json creation
- */
-async function stepSummary(state: WizardState): Promise<boolean> {
-  prompts.log.step('Step 8/8: Saving Configuration');
+  prompts.log.step(`Step 7/${state.totalSteps}: Updating .gitignore`);
 
   try {
-    // Initialize or load existing config
-    const configResult = await initConfig();
-    if (!configResult.success || !configResult.config) {
-      prompts.log.error('Failed to initialize configuration');
-      return false;
-    }
+    const result = await updateGitignore(state.projectPath, CLAUDE_GITIGNORE_ENTRIES);
 
-    const config = configResult.config;
-    const now = new Date().toISOString();
-
-    // Update config with installation results
-    config.lastUpdated = now;
-
-    // Add Beads info if installed
-    if (state.beadsInstall?.success) {
-      const beadsComponent: InstalledComponent = {
-        name: 'beads',
-        type: 'scripts',
-        installedAt: now,
-        source: 'local',
-        enabled: true,
-        version: state.beadsInstall.version,
-        metadata: { method: state.beadsMethod },
-      };
-      if (!config.components.scripts) {
-        config.components.scripts = [];
+    if (result.success) {
+      if (result.created) {
+        prompts.log.success('Created .gitignore with Claude entries');
+      } else if (result.entriesAdded > 0) {
+        prompts.log.success(`Added ${result.entriesAdded} Claude entries to .gitignore`);
+      } else {
+        prompts.log.info('.gitignore already has Claude entries');
       }
-      config.components.scripts.push(beadsComponent);
+    } else {
+      prompts.log.warn(`Failed to update .gitignore: ${result.error}`);
     }
 
-    // Add MCP server info
-    if (state.mcpInstall?.installed) {
-      for (const serverId of state.mcpInstall.installed) {
-        config.mcpServers = config.mcpServers || [];
-        if (!config.mcpServers.find(s => s.name === serverId)) {
-          config.mcpServers.push({
-            name: serverId,
-            command: 'npx',
-            args: ['-y', serverId],
-            installedAt: now,
-            enabled: true,
-          });
+    // Initialize git if this is a new project
+    if (options.projectName && !options.skipGit) {
+      const gitDir = path.join(state.projectPath, '.git');
+      if (!existsSync(gitDir)) {
+        spinner = ora('Initializing git repository...').start();
+        const gitResult = await executeCommand('git', ['init'], { cwd: state.projectPath });
+
+        if (gitResult.exitCode === 0) {
+          spinner.succeed('Git repository initialized');
+
+          // Create initial commit
+          await executeCommand('git', ['add', '-A'], { cwd: state.projectPath });
+          await executeCommand(
+            'git',
+            ['commit', '-m', 'Initial commit - Created with JHC Agentic EcoSystem - Bizzy'],
+            { cwd: state.projectPath }
+          );
+        } else {
+          spinner.fail('Failed to initialize git');
         }
       }
     }
 
-    // Save configuration
-    const saveResult = await saveConfig(config);
-    if (!saveResult.success) {
-      prompts.log.error(`Failed to save configuration: ${saveResult.error}`);
-      return false;
-    }
-
-    prompts.log.success('Configuration saved');
-
-    // Calculate duration
-    const duration = Math.round((Date.now() - state.startTime) / 1000);
-
-    // Display summary
-    console.log('');
-    console.log(gradientString.pastel('Setup Complete!'));
-    console.log('');
-    console.log('Summary:');
-    console.log('--------');
-
-    if (state.prerequisites) {
-      console.log(`  Prerequisites: All critical tools installed`);
-    }
-
-    if (state.githubAuth?.authenticated) {
-      console.log(`  GitHub: Authenticated as ${state.githubAuth.username}`);
-    } else {
-      console.log(`  GitHub: Not configured`);
-    }
-
-    if (state.apiKeysResult?.success) {
-      const keyCount = Object.values(state.apiKeysResult.keys).filter(v => v).length;
-      console.log(`  API Keys: ${keyCount} configured`);
-    }
-
-    if (state.backupResult?.success) {
-      console.log(`  Backup: ${state.backupResult.manifest.id}`);
-    }
-
-    if (state.syncResult?.success) {
-      const syncedCount = state.syncResult.synced.filter(s => s.action !== 'skipped').length;
-      console.log(`  Repository: ${syncedCount} components synced`);
-    }
-
-    if (state.beadsInstall?.success) {
-      console.log(`  Beads: v${state.beadsInstall.version}`);
-    }
-
-    if (state.taskMasterInstall?.success) {
-      console.log(`  Task Master: Installed`);
-    }
-
-    if (state.mcpInstall) {
-      console.log(`  MCP Servers: ${state.mcpInstall.installed.length} installed`);
-    }
-
-    console.log(`  Duration: ${duration}s`);
-    console.log('');
-
-    // Next steps
-    prompts.note(
-      `1. Run: aes-bizzy doctor\n2. Start using: claude\n3. Create project: aes-bizzy project <name>`,
-      'Next Steps'
-    );
-
     return true;
   } catch (error) {
-    logger.error(`Summary error: ${error instanceof Error ? error.message : String(error)}`);
-    return false;
+    logger.error(`Gitignore error: ${error instanceof Error ? error.message : String(error)}`);
+    return true;
   }
+}
+
+/**
+ * Step 8: Summary
+ */
+async function stepSummary(state: WizardState, options: InitOptions): Promise<boolean> {
+  prompts.log.step(`Step 8/${state.totalSteps}: Setup Complete`);
+
+  const duration = Math.round((Date.now() - state.startTime) / 1000);
+
+  console.log('');
+  console.log(gradientString.pastel('Setup Complete!'));
+  console.log('');
+  console.log('Summary:');
+  console.log('--------');
+  console.log(`  Mode: ${state.isGlobal ? 'Global (~/.claude)' : 'Project-level'}`);
+  console.log(`  Location: ${state.projectPath}`);
+
+  if (state.prerequisites) {
+    console.log('  Prerequisites: All critical tools installed');
+  }
+
+  const credCount = Object.values(state.credentials).filter(Boolean).length;
+  console.log(`  Credentials: ${credCount} configured`);
+
+  if (state.selectedMcpServers?.length) {
+    console.log(`  MCP Servers: ${state.selectedMcpServers.length} configured`);
+  }
+
+  if (state.syncResult?.success) {
+    const syncedCount = state.syncResult.synced.filter(s => s.action !== 'skipped').length;
+    console.log(`  Components: ${syncedCount} synced`);
+  }
+
+  if (state.beadsInstall?.success) {
+    console.log(`  Beads: v${state.beadsInstall.version}`);
+  }
+
+  if (state.taskMasterInstall?.success) {
+    console.log('  Task Master: Installed');
+  }
+
+  console.log(`  Duration: ${duration}s`);
+  console.log('');
+
+  // Next steps
+  const nextSteps: string[] = [];
+
+  if (options.projectName) {
+    nextSteps.push(`cd ${options.projectName}`);
+  }
+
+  if (!state.isGlobal) {
+    nextSteps.push('# Add any missing credentials to .env.claude');
+  }
+
+  nextSteps.push('claude    # Start Claude Code');
+
+  prompts.note(nextSteps.join('\n'), 'Next Steps');
+
+  return true;
 }
 
 /**
@@ -825,26 +854,55 @@ export async function runInitWizard(options: InitOptions = {}): Promise<{
   success: boolean;
   state: WizardState;
 }> {
-  // Setup signal handlers
   setupSignalHandlers();
 
-  // Initialize state
+  // Determine project path
+  let projectPath: string;
+  let projectName: string;
+
+  if (options.projectName) {
+    // Creating new project
+    projectPath = path.resolve(process.cwd(), options.projectName);
+    projectName = options.projectName;
+  } else {
+    // Setup in current directory
+    projectPath = process.cwd();
+    projectName = path.basename(projectPath);
+  }
+
+  const isGlobal = options.global ?? false;
+  const totalSteps = isGlobal ? 6 : 8; // Global mode skips gitignore and some project-specific steps
+
   wizardState = {
     currentStep: 0,
-    totalSteps: 8,
+    totalSteps,
+    projectPath,
+    isGlobal,
+    credentials: {},
     startTime: Date.now(),
     cancelled: false,
   };
 
-  // Show welcome
   showWelcomeBanner();
 
-  prompts.intro('A.E.S - Bizzy Setup');
+  const modeDesc = isGlobal ? 'Global (~/.claude)' : `Project (${projectPath})`;
+  prompts.intro(`A.E.S - Bizzy Setup [${modeDesc}]`);
   console.log('');
-  console.log('This wizard will guide you through setting up your Claude development environment.');
-  console.log('It consists of 8 steps. You can skip any step using the --skip-* flags.\n');
+
+  if (options.projectName) {
+    console.log(`Creating new project: ${options.projectName}\n`);
+  }
 
   try {
+    // Create project structure first (if project-level)
+    if (!isGlobal) {
+      const structureResult = await createProjectStructure(projectPath, projectName, options);
+      if (!structureResult.success) {
+        prompts.log.error(`Failed to create project structure: ${structureResult.error}`);
+        return { success: false, state: wizardState };
+      }
+    }
+
     // Step 1: Prerequisites
     wizardState.currentStep = 1;
     if (!options.skipPrerequisites) {
@@ -854,23 +912,23 @@ export async function runInitWizard(options: InitOptions = {}): Promise<{
         return { success: false, state: wizardState };
       }
     } else {
-      prompts.log.info('Skipping prerequisites check (--skip-prerequisites)');
+      prompts.log.info('Skipping prerequisites (--skip-prerequisites)');
     }
 
-    // Step 2: GitHub Auth
+    // Step 2: Credentials
     wizardState.currentStep = 2;
-    if (!options.skipGithub) {
-      await stepGitHubAuth(wizardState);
+    if (!options.skipApiKeys) {
+      await stepCredentials(wizardState, options);
     } else {
-      prompts.log.info('Skipping GitHub authentication (--skip-github)');
+      prompts.log.info('Skipping credentials (--skip-api-keys)');
     }
 
-    // Step 3: API Keys
+    // Step 3: MCP Servers
     wizardState.currentStep = 3;
-    if (!options.skipApiKeys) {
-      await stepApiKeys(wizardState, options);
+    if (!options.skipMcp) {
+      await stepMcpServers(wizardState, options);
     } else {
-      prompts.log.info('Skipping API keys configuration (--skip-api-keys)');
+      prompts.log.info('Skipping MCP servers (--skip-mcp)');
     }
 
     // Step 4: Repo Sync
@@ -886,7 +944,7 @@ export async function runInitWizard(options: InitOptions = {}): Promise<{
     if (!options.skipBeads) {
       await stepBeadsInstall(wizardState, options);
     } else {
-      prompts.log.info('Skipping Beads installation (--skip-beads)');
+      prompts.log.info('Skipping Beads (--skip-beads)');
     }
 
     // Step 6: Task Master
@@ -894,24 +952,22 @@ export async function runInitWizard(options: InitOptions = {}): Promise<{
     if (!options.skipTaskmaster) {
       await stepTaskMasterInstall(wizardState, options);
     } else {
-      prompts.log.info('Skipping Task Master installation (--skip-taskmaster)');
+      prompts.log.info('Skipping Task Master (--skip-taskmaster)');
     }
 
-    // Step 7: MCP Servers
-    wizardState.currentStep = 7;
-    if (!options.skipMcp) {
-      await stepMcpServersInstall(wizardState, options);
-    } else {
-      prompts.log.info('Skipping MCP servers (--skip-mcp)');
+    // Step 7: Gitignore (project-level only)
+    if (!isGlobal) {
+      wizardState.currentStep = 7;
+      await stepGitignore(wizardState, options);
     }
 
     // Step 8: Summary
-    wizardState.currentStep = 8;
-    const summaryResult = await stepSummary(wizardState);
+    wizardState.currentStep = totalSteps;
+    await stepSummary(wizardState, options);
 
-    prompts.outro(summaryResult ? 'Setup complete!' : 'Setup completed with warnings.');
+    prompts.outro('Setup complete!');
 
-    return { success: summaryResult, state: wizardState };
+    return { success: true, state: wizardState };
   } catch (error) {
     logger.error(`Init wizard error: ${error instanceof Error ? error.message : String(error)}`);
     prompts.outro('Setup failed. See errors above.');
