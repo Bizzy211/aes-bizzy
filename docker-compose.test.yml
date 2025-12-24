@@ -1,0 +1,125 @@
+# =============================================================================
+# A.E.S Bizzy - E2E Test Stack
+# =============================================================================
+# Complete test environment with all services
+#
+# Usage:
+#   # Structural tests only (no API calls)
+#   docker-compose -f docker-compose.test.yml run --rm test-runner --structural
+#
+#   # Smoke tests (minimal API calls)
+#   docker-compose -f docker-compose.test.yml --env-file .env.test run --rm test-runner --smoke
+#
+#   # Full integration tests
+#   docker-compose -f docker-compose.test.yml --env-file .env.test run --rm test-runner --full
+#
+#   # Cleanup
+#   docker-compose -f docker-compose.test.yml down -v
+# =============================================================================
+
+services:
+  # ===========================================================================
+  # Main Test Runner
+  # ===========================================================================
+  test-runner:
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+    container_name: aes-bizzy-test-runner
+    environment:
+      # Test configuration
+      - TEST_MODE=${TEST_MODE:-structural}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - CI=${CI:-true}
+
+      # Service endpoints (internal Docker network)
+      - QDRANT_URL=http://qdrant:6333
+      - HEIMDALL_QDRANT_URL=http://qdrant:6333
+
+      # API Keys (from .env.test file)
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - PERPLEXITY_API_KEY=${PERPLEXITY_API_KEY:-}
+      - GITHUB_TOKEN=${GITHUB_TOKEN:-}
+      - SUPABASE_URL=${SUPABASE_URL:-}
+      - SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY:-}
+      - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY:-}
+
+      # MCP Server API Keys (verified from .claude/mcp.json)
+      - EXA_API_KEY=${EXA_API_KEY:-}
+      - REF_API_KEY=${REF_API_KEY:-}
+      - TAVILY_API_KEY=${TAVILY_API_KEY:-}
+      - FIRECRAWL_API_KEY=${FIRECRAWL_API_KEY:-}
+      # NOTE: Magic UX/UI MCP uses API_KEY (not MAGIC_21ST_API_KEY) per .claude/mcp.json:119
+      - API_KEY=${API_KEY:-}
+
+      # Additional Supabase keys (different MCP servers use different names)
+      - SUPABASE_KEY=${SUPABASE_KEY:-}
+      - SUPABASE_ACCESS_TOKEN=${SUPABASE_ACCESS_TOKEN:-}
+
+      # Test-specific settings
+      - TEST_GITHUB_REPO=${TEST_GITHUB_REPO:-}
+      - TEST_GITHUB_OWNER=${TEST_GITHUB_OWNER:-}
+      - TEST_TIMEOUT=${TEST_TIMEOUT:-300000}
+    volumes:
+      # Mount test results for extraction
+      - ./test-results:/app/test-results
+      # Mount source for development iteration (optional)
+      # - ./src:/app/src:ro
+      # - ./tests:/app/tests:ro
+    depends_on:
+      qdrant:
+        condition: service_healthy
+    networks:
+      - test-network
+
+  # ===========================================================================
+  # Qdrant Vector Database (for Heimdall)
+  # ===========================================================================
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: aes-bizzy-test-qdrant
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    environment:
+      - QDRANT__LOG_LEVEL=INFO
+    volumes:
+      - qdrant-test-data:/qdrant/storage
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:6333/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - test-network
+
+  # ===========================================================================
+  # Optional: Local Supabase (for offline testing)
+  # Uncomment if you want fully local testing without external Supabase
+  # ===========================================================================
+  # supabase-db:
+  #   image: supabase/postgres:15.1.0.117
+  #   container_name: aes-bizzy-test-postgres
+  #   environment:
+  #     - POSTGRES_USER=postgres
+  #     - POSTGRES_PASSWORD=postgres
+  #     - POSTGRES_DB=postgres
+  #   volumes:
+  #     - supabase-test-data:/var/lib/postgresql/data
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "pg_isready -U postgres"]
+  #     interval: 10s
+  #     timeout: 5s
+  #     retries: 5
+  #   networks:
+  #     - test-network
+
+networks:
+  test-network:
+    driver: bridge
+
+volumes:
+  qdrant-test-data:
+  # supabase-test-data:

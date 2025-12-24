@@ -1,0 +1,13 @@
+{
+  "session_id": "test-session-123",
+  "started_at": "2024-12-24T10:00:00Z",
+  "agent": "pm-lead",
+  "context": {
+    "project": "test-project",
+    "working_directory": "/home/user/project",
+    "git_branch": "feature/test"
+  },
+  "handoffs": [],
+  "tasks_completed": 0,
+  "tasks_in_progress": 1
+}

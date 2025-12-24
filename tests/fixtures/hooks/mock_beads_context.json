@@ -1,0 +1,28 @@
+{
+  "tasks": [
+    {
+      "id": "1",
+      "title": "Implement user authentication",
+      "status": "in-progress",
+      "priority": "high",
+      "assigned": "backend-dev",
+      "tags": ["security", "api"],
+      "created_at": "2024-12-24T10:00:00Z",
+      "updated_at": "2024-12-24T12:00:00Z"
+    },
+    {
+      "id": "2",
+      "title": "Create dashboard UI",
+      "status": "pending",
+      "priority": "medium",
+      "assigned": "frontend-dev",
+      "tags": ["ui", "react"],
+      "created_at": "2024-12-24T10:00:00Z"
+    }
+  ],
+  "session": {
+    "started": "2024-12-24T10:00:00Z",
+    "agent": "pm-lead",
+    "project": "test-project"
+  }
+}
