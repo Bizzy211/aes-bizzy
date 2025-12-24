@@ -17,6 +17,7 @@ import { runSync } from './sync.js';
 import { createBeadsCommand } from './beads.js';
 import { createContextCommand } from './context.js';
 import { createMemoryCommand } from './memory.js';
+import { createTestCommand } from './test.js';
 
 // Read version from package.json at runtime
 const VERSION = '1.0.2';
@@ -328,6 +329,10 @@ export function createProgram(): Command {
   // === MEMORY COMMAND ===
   // Heimdall persistent memory management
   program.addCommand(createMemoryCommand());
+
+  // === TEST COMMAND ===
+  // E2E test runner with credential validation
+  program.addCommand(createTestCommand());
 
   return program;
 }
