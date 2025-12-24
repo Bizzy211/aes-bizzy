@@ -1,0 +1,181 @@
+{
+  "name": "recommended",
+  "version": "1.0.0",
+  "description": "Production installation for A.E.S - Bizzy - Full agent team with validation hooks and research capabilities",
+  "totalFiles": 53,
+  "extends": "essential",
+  "components": {
+    "agents": {
+      "path": "agents/core/",
+      "files": [
+        "pm-lead.md",
+        "frontend-dev.md",
+        "backend-dev.md",
+        "debugger.md",
+        "db-architect.md",
+        "devops-engineer.md",
+        "test-engineer.md",
+        "security-expert.md",
+        "code-reviewer.md"
+      ],
+      "count": 9,
+      "description": "Complete development team agents"
+    },
+    "hooks": {
+      "essential": {
+        "path": "hooks/essential/",
+        "files": [
+          "session_start.py",
+          "stop.py",
+          "pre_tool_use.py",
+          "post_tool_use.py",
+          "pre_compact.py",
+          "subagent_stop.py",
+          "user_prompt_submit.py",
+          "secret_scanner.py"
+        ],
+        "count": 8
+      },
+      "recommended": {
+        "path": "hooks/recommended/",
+        "files": [
+          "pre_commit_validator.py",
+          "validate_git_commit.py",
+          "gitignore_enforcer.py",
+          "env_sync_validator.py",
+          "api_docs_enforcer.py",
+          "api_endpoint_verifier.py",
+          "database_extension_check.py",
+          "duplicate_detector.py",
+          "no_mock_code.py",
+          "readme_update_validator.py",
+          "style_consistency.py",
+          "timestamp_validator.py",
+          "mcp_tool_enforcer.py"
+        ],
+        "count": 13
+      },
+      "totalCount": 21,
+      "description": "Security, validation, and quality hooks"
+    },
+    "utils": {
+      "path": "hooks/utils/",
+      "files": [
+        "__init__.py",
+        "common.py",
+        "llm/__init__.py",
+        "llm/anth.py",
+        "llm/oai.py",
+        "llm/ollama.py",
+        "tts/__init__.py",
+        "tts/elevenlabs_tts.py",
+        "tts/openai_tts.py",
+        "tts/pyttsx3_tts.py"
+      ],
+      "count": 10,
+      "description": "Shared utility modules"
+    },
+    "skills": {
+      "essential": {
+        "path": "skills/essential/",
+        "files": [
+          "beads.md",
+          "task-master.md",
+          "github-issues.md",
+          "project-init.md",
+          "agent-creator.md"
+        ],
+        "count": 5
+      },
+      "orchestration": {
+        "path": "skills/orchestration/",
+        "files": [
+          "bizzy.md"
+        ],
+        "count": 1
+      },
+      "research": {
+        "path": "skills/research/",
+        "files": [
+          "exa-ai.md",
+          "ref-tools.md"
+        ],
+        "count": 2
+      },
+      "totalCount": 8,
+      "description": "Task management, orchestration, and research skills"
+    },
+    "commands": {
+      "essential": {
+        "path": "commands/essential/",
+        "files": [
+          "prime.md",
+          "git_status.md",
+          "question.md"
+        ],
+        "count": 3
+      },
+      "optional": {
+        "path": "commands/optional/",
+        "files": [
+          "all_tools.md"
+        ],
+        "count": 1
+      },
+      "totalCount": 4,
+      "description": "Session and utility commands"
+    },
+    "templates": {
+      "path": "templates/",
+      "files": [
+        "AGENT_TEMPLATE.md",
+        "SKILL_TEMPLATE.md"
+      ],
+      "count": 2,
+      "description": "Template files"
+    },
+    "manifests": {
+      "path": "manifests/",
+      "files": [
+        "agent-index.json",
+        "essential.json",
+        "recommended.json"
+      ],
+      "count": 3,
+      "description": "Installation manifests"
+    }
+  },
+  "categories": ["essential", "recommended"],
+  "requiredTools": ["bd", "task-master", "gh"],
+  "requiredMcpServers": [
+    "task-master-ai",
+    "context7",
+    "sequential-thinking"
+  ],
+  "optionalMcpServers": [
+    "exa",
+    "ref",
+    "elevenlabs",
+    "supabase-server"
+  ],
+  "installOrder": [
+    "manifests",
+    "templates",
+    "utils",
+    "hooks",
+    "agents",
+    "skills",
+    "commands"
+  ],
+  "postInstall": [
+    "bd init",
+    "task-master init",
+    "task-master models --setup"
+  ],
+  "metadata": {
+    "created": "2024-12-22",
+    "tier": "recommended",
+    "targetUsers": "Development teams, production projects",
+    "estimatedSetupTime": "10 minutes"
+  }
+}

@@ -61,15 +61,53 @@ export async function assembleContextForAgent(taskId, agentType, options = {}) {
     };
 }
 /**
- * Get Task Master task context via MCP or CLI
+ * Get Task Master task context via CLI
+ *
+ * Fetches task details from Task Master and converts to TaskContext format.
+ * Uses CLI as MCP tools may not be available in all contexts.
  */
-async function getTaskMasterContext(_taskId) {
-    // Note: This is a simplified implementation that returns undefined
-    // In a full implementation, this would call Task Master MCP tools
-    // or parse output from the task-master CLI
-    // For now, return undefined - the context can still be assembled from Beads
-    // Task Master integration should be added when MCP tools are available
-    return undefined;
+async function getTaskMasterContext(taskId) {
+    try {
+        // Execute Task Master CLI to get task details
+        const { exec } = await import('child_process');
+        const { promisify } = await import('util');
+        const execAsync = promisify(exec);
+        // Get task details as JSON
+        const { stdout } = await execAsync(`task-master show ${taskId} --json`, {
+            cwd: process.cwd(),
+            timeout: 10000,
+        });
+        // Parse the JSON output
+        const taskData = JSON.parse(stdout.trim());
+        if (!taskData || !taskData.id) {
+            return undefined;
+        }
+        // Convert to TaskContext format
+        const context = {
+            taskId: String(taskData.id),
+            title: taskData.title || '',
+            description: taskData.description,
+            details: taskData.details,
+            status: taskData.status || 'pending',
+            dependencies: taskData.dependencies?.map((d) => String(d)),
+        };
+        // Add subtasks if present
+        if (taskData.subtasks && Array.isArray(taskData.subtasks)) {
+            context.subtasks = taskData.subtasks.map((st) => ({
+                id: String(st.id),
+                title: st.title || '',
+                status: st.status || 'pending',
+                notes: st.notes,
+            }));
+        }
+        return context;
+    }
+    catch (error) {
+        // Task Master CLI not available or task not found
+        // Return undefined - context can still be assembled from Beads alone
+        console.debug(`Task Master context unavailable for task ${taskId}:`, error);
+        return undefined;
+    }
 }
 /**
  * Deduplicate beads by ID

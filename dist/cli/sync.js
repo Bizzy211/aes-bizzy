@@ -10,13 +10,20 @@ import chalk from 'chalk';
 import { createLogger } from '../utils/logger.js';
 const logger = createLogger({ context: { command: 'sync' } });
 /**
- * Get the path to Claude Files directory
+ * Get the path to ecosystem files directory
+ * Checks for local project structure first, then falls back to global installation
  */
 function getClaudeFilesPath() {
-    // Check for local development path first
-    const localPath = path.join(process.cwd(), 'claude-subagents');
-    if (fs.existsSync(localPath)) {
-        return localPath;
+    const projectRoot = process.cwd();
+    // Check for local project structure (agents/, manifests/, etc. at root)
+    const manifestsPath = path.join(projectRoot, 'manifests');
+    if (fs.existsSync(manifestsPath)) {
+        return projectRoot;
+    }
+    // Check for templates directory (NPM package structure)
+    const templatesPath = path.join(projectRoot, 'templates');
+    if (fs.existsSync(templatesPath)) {
+        return templatesPath;
     }
     // Fall back to global installation
     const globalPath = path.join(os.homedir(), '.claude', 'claude-subagents');

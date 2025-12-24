@@ -36,6 +36,9 @@ coverage/
 # Misc
 nul
 
+# Archived backups
+archives/
+
 # Claude Code / AES Bizzy
 .mcp.json
 .env.claude

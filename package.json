@@ -78,6 +78,11 @@
     "dist",
     "bin",
     "templates",
+    "agents",
+    "hooks",
+    "skills",
+    "commands",
+    "manifests",
     "README.md",
     "LICENSE",
     "CHANGELOG.md"

@@ -199,14 +199,19 @@ async function parseAgentFile(filePath) {
  * Get the agents directory path
  */
 export function getAgentsDirectory() {
-    // Check for Claude Files/agents directory
     const projectRoot = process.cwd();
-    const agentsPath = path.join(projectRoot, 'Claude Files', 'agents');
+    // Check for agents/core directory (new structure)
+    const coreAgentsPath = path.join(projectRoot, 'agents', 'core');
+    if (existsSync(coreAgentsPath)) {
+        return coreAgentsPath;
+    }
+    // Fallback to agents directory
+    const agentsPath = path.join(projectRoot, 'agents');
     if (existsSync(agentsPath)) {
         return agentsPath;
     }
-    // Fallback to relative path from src
-    return path.join(projectRoot, 'Claude Files', 'agents');
+    // Last resort: templates/agents (NPM package fallback)
+    return path.join(projectRoot, 'templates', 'agents');
 }
 /**
  * Load all agent capabilities from markdown files
